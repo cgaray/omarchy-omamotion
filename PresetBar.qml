@@ -19,6 +19,9 @@ Panel {
     property string activeVibe: ""
     property bool suppressEcho: false
 
+    implicitWidth: button.implicitWidth
+    implicitHeight: button.implicitHeight
+
     function normalizeParsed(parsed) {
         var s = MotionState.defaultState()
         var name
