@@ -45,6 +45,8 @@ Item {
     property string statusText: ""
     property string fileText: ""
     property bool advancedMode: false
+    property string customPresetName: ""
+    property var customPresets: []
     property string hoveredVibe: ""
     property int stateRev: 0            // bumped on in-place mutations so
                                         // vibe-highlight bindings re-evaluate
@@ -76,6 +78,48 @@ Item {
             root.statusText = "~/.config/hypr/looknfeel.lua not found"
             root.state = MotionState.defaultState()
         }
+    }
+
+    FileView {
+        id: presetFile
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.loadCustomPresets()
+        onFileChanged: root.loadCustomPresets()
+        onLoadFailed: root.customPresets = []
+    }
+
+    function loadCustomPresets() {
+        try {
+            var parsed = JSON.parse(presetFile.text())
+            root.customPresets = Array.isArray(parsed) ? parsed : []
+        } catch (e) {
+            root.customPresets = []
+        }
+    }
+
+    function saveCustomPreset() {
+        var name = customPresetName.trim()
+        if (name === "") {
+            statusText = "Enter a name for this preset"
+            return
+        }
+        var next = customPresets.slice()
+        var snapshot = JSON.parse(JSON.stringify(root.state))
+        var replaced = false
+        for (var i = 0; i < next.length; i++) {
+            if (next[i].name === name) {
+                next[i] = { name: name, state: snapshot }
+                replaced = true
+                break
+            }
+        }
+        if (!replaced) next.push({ name: name, state: snapshot })
+        presetFile.setText(JSON.stringify(next, null, 2))
+        customPresets = next
+        customPresetName = ""
+        statusText = "Preset saved — " + name
     }
 
     function markChanged(label) {
@@ -544,6 +588,33 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(2)
+
+                    TextField {
+                        id: customPresetField
+                        Layout.preferredWidth: 220
+                        placeholderText: "name this setup"
+                        text: root.customPresetName
+                        onTextChanged: root.customPresetName = text
+                        onAccepted: root.saveCustomPreset()
+                    }
+                    Button {
+                        text: "Save current preset"
+                        onClicked: root.saveCustomPreset()
+                    }
+                    Text {
+                        text: root.customPresets.length > 0
+                            ? root.customPresets.length + " saved"
+                            : "Saved presets appear in the bar"
+                        color: Color.muted
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                        Layout.alignment: Qt.AlignVCenter
                     }
                 }
 

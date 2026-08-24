@@ -20,7 +20,10 @@ Panel {
     property string activeVibe: ""
     property bool suppressEcho: false
     property string hoveredVibe: ""
+    property var hoveredPreset: null
     property real previewProgress: 0
+    property var customPresets: []
+    property int customPresetRev: 0
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
@@ -43,9 +46,58 @@ Panel {
     function reloadState() {
         fileText = configFile.text()
         var result = LuaConfig.readState(fileText)
-        activeVibe = result.found && !result.error
-            ? MotionState.currentVibe(normalizeParsed(result.state), 0)
-            : "Balanced"
+        if (!result.found || result.error) {
+            activeVibe = "Balanced"
+            return
+        }
+        var current = normalizeParsed(result.state)
+        activeVibe = MotionState.currentVibe(current, 0)
+        if (activeVibe !== "") return
+        for (var i = 0; i < customPresets.length; i++) {
+            if (customPresets[i].state
+                && JSON.stringify(customPresets[i].state.animations) === JSON.stringify(current.animations)) {
+                activeVibe = customPresets[i].name
+                return
+            }
+        }
+    }
+
+    function loadCustomPresets() {
+        try {
+            var parsed = JSON.parse(presetFile.text())
+            customPresets = Array.isArray(parsed) ? parsed : []
+        } catch (e) {
+            customPresets = []
+        }
+        customPresetRev++
+    }
+
+    function presetItems() {
+        var items = []
+        for (var i = 0; i < MotionState.VIBES.length; i++) {
+            var vibe = MotionState.VIBES[i]
+            items.push({ id: vibe.id, name: vibe.name, desc: vibe.desc, builtin: true })
+        }
+        for (var j = 0; j < customPresets.length; j++) {
+            var custom = customPresets[j]
+            if (custom && custom.name && custom.state)
+                items.push({ id: "custom-" + j, name: custom.name, desc: "Saved custom setup", builtin: false, state: custom.state })
+        }
+        return items
+    }
+
+    function previewState() {
+        if (!hoveredPreset) return null
+        return hoveredPreset.builtin
+            ? MotionState.applyPreset(MotionState.defaultState(), MotionState.VIBE_PRESET[hoveredPreset.id])
+            : hoveredPreset.state
+    }
+
+    function previewEntry() {
+        var s = previewState()
+        if (!s || !s.animations) return null
+        return s.animations.workspaces && s.animations.workspaces.enabled
+            ? s.animations.workspaces : s.animations.windowsIn
     }
 
     function applyVibe(id) {
@@ -65,23 +117,46 @@ Panel {
         root.close()
     }
 
+    function applyCustomPreset(item) {
+        var result = LuaConfig.readState(fileText)
+        var state = result.found && !result.error
+            ? normalizeParsed(result.state) : MotionState.defaultState()
+        if (!item.state || !item.state.animations) return
+        state.animations = JSON.parse(JSON.stringify(item.state.animations))
+        if (item.state.curves) state.curves = JSON.parse(JSON.stringify(item.state.curves))
+        var nextText = LuaConfig.applyToText(
+            fileText,
+            LuaConfig.generateBody(state, MotionState.LEAVES.map(function (m) { return m.leaf }))
+        )
+        suppressEcho = true
+        configFile.setText(nextText)
+        fileText = nextText
+        activeVibe = item.name
+        root.close()
+    }
+
+    function applyItem(item) {
+        if (item.builtin) applyVibe(item.id)
+        else applyCustomPreset(item)
+    }
+
     function openStudio() {
         if (bar) bar.run("omarchy-shell shell toggle io.github.cgaray.omamotion")
         root.close()
     }
 
     function previewDuration() {
-        if (hoveredVibe === "Instant") return 140
-        if (hoveredVibe === "Snappy") return 280
-        if (hoveredVibe === "Smooth") return 900
-        if (hoveredVibe === "Playful") return 560
-        return 480
+        var entry = previewEntry()
+        return entry && entry.speed !== undefined ? Math.max(140, entry.speed * 100) : 480
     }
 
     function previewEasing() {
-        if (hoveredVibe === "Snappy") return BezierLib.fromPoints([0.15, 0], [0.1, 1])
-        if (hoveredVibe === "Smooth") return BezierLib.fromPoints([0.65, 0.05], [0.36, 1])
-        return BezierLib.fromPoints([0.23, 1], [0.32, 1])
+        var s = previewState()
+        var entry = previewEntry()
+        var curves = s && s.curves ? s.curves : {}
+        var curve = entry && curves[entry.bezier]
+            ? curves[entry.bezier] : { p1: [0.23, 1], p2: [0.32, 1] }
+        return BezierLib.fromPoints(curve.p1, curve.p2)
     }
 
     Timer {
@@ -109,6 +184,16 @@ Panel {
             }
             reload()
         }
+    }
+
+    FileView {
+        id: presetFile
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: { root.loadCustomPresets(); root.reloadState() }
+        onFileChanged: { root.loadCustomPresets(); root.reloadState() }
+        onLoadFailed: root.customPresets = []
     }
 
     Component {
@@ -180,7 +265,7 @@ Panel {
         owner: root
         bar: root.bar
         open: root.opened
-        contentWidth: Style.space(330)
+        contentWidth: Style.space(380)
         // KeyboardPanel adds its own surface insets around the content.
         // Leave a generous bottom reserve so the studio action never lands
         // underneath the card edge on compact themes or font scales.
@@ -213,11 +298,11 @@ Panel {
 
                 Column {
                     id: presetList
-                    width: (parent.width - pickerRow.spacing) * 0.58
+                    width: (parent.width - pickerRow.spacing) * 0.60
                     spacing: Style.space(2)
 
                     Repeater {
-                        model: MotionState.VIBES
+                        model: { var rev = root.customPresetRev; return root.presetItems() }
 
                         delegate: Rectangle {
                             required property var modelData
@@ -227,7 +312,7 @@ Panel {
                             color: hover.containsMouse
                                 ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
                                 : "transparent"
-                            border.width: root.activeVibe === modelData.id ? 2 : 1
+                            border.width: root.activeVibe === modelData.name ? 2 : 1
                             border.color: root.activeVibe === modelData.id
                                 ? Color.accent
                                 : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.22)
@@ -239,14 +324,16 @@ Panel {
                                 cursorShape: Qt.PointingHandCursor
                                 onEntered: {
                                     root.hoveredVibe = modelData.id
+                                    root.hoveredPreset = modelData
                                     root.previewProgress = 0
                                     previewCanvas.requestPaint()
                                 }
                                 onExited: {
                                     root.hoveredVibe = ""
+                                    root.hoveredPreset = null
                                     previewCanvas.requestPaint()
                                 }
-                                onClicked: root.applyVibe(modelData.id)
+                        onClicked: root.applyItem(modelData)
                             }
 
                             Column {
@@ -259,7 +346,7 @@ Panel {
 
                                 Text {
                                     text: modelData.name
-                                    color: root.activeVibe === modelData.id ? Color.accent : Color.foreground
+                                    color: root.activeVibe === modelData.name ? Color.accent : Color.foreground
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.body
                                     font.weight: Font.DemiBold
@@ -270,7 +357,7 @@ Panel {
                                     color: Color.muted
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.caption
-                                    elide: Text.ElideRight
+                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }
@@ -290,7 +377,9 @@ Panel {
                             var w = width
                             var h = height
                             var gap = Style.space(3)
-                            var vertical = root.hoveredVibe === "Playful"
+                            var previewStyle = root.previewEntry() && root.previewEntry().style
+                                ? root.previewEntry().style : ""
+                            var vertical = previewStyle.indexOf("slidevert") !== -1
                             var workspaceWidth = vertical ? w : (w - gap) / 2
                             var workspaceHeight = vertical ? (h - gap) / 2 : h - Style.space(4)
                             var eased = root.hoveredVibe === ""
