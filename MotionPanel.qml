@@ -391,8 +391,8 @@ Item {
         title: "OmaMotion — Hyprland motion studio"
         color: Color.background
         implicitWidth: 960
-        implicitHeight: 730
-        minimumSize: Qt.size(880, 600)
+        implicitHeight: 620
+        minimumSize: Qt.size(840, 500)
 
         onVisibleChanged: {
             if (!visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
@@ -414,6 +414,7 @@ Item {
 
             ColumnLayout {
                 anchors.fill: parent
+                anchors.margins: Style.space(4)
                 spacing: Style.space(3)
 
                 // Header -----------------------------------------------------
@@ -552,12 +553,14 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: 0
                     spacing: Style.space(4)
 
                     Flickable {
                         id: leafList
                         Layout.preferredWidth: 400
                         Layout.fillHeight: true
+                        Layout.minimumHeight: 0
                         contentWidth: width
                         contentHeight: leafColumn.height
                         clip: true
@@ -604,6 +607,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        Layout.minimumHeight: 0
                         spacing: Style.space(2)
 
                         // Advanced-only: curve chips, editor, custom curves.

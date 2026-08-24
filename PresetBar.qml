@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Ui
 import "MotionState.js" as MotionState
 import "LuaConfig.js" as LuaConfig
+import "Bezier.js" as BezierLib
 
 // A compact, beginner-friendly preset picker. The full studio remains
 // available from the final row; the common path is one click on a vibe.
@@ -18,6 +19,8 @@ Panel {
     property string fileText: ""
     property string activeVibe: ""
     property bool suppressEcho: false
+    property string hoveredVibe: ""
+    property real previewProgress: 0
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
@@ -65,6 +68,32 @@ Panel {
     function openStudio() {
         if (bar) bar.run("omarchy-shell shell toggle io.github.cgaray.omamotion")
         root.close()
+    }
+
+    function previewDuration() {
+        if (hoveredVibe === "Instant") return 140
+        if (hoveredVibe === "Snappy") return 280
+        if (hoveredVibe === "Smooth") return 900
+        if (hoveredVibe === "Playful") return 560
+        return 480
+    }
+
+    function previewEasing() {
+        if (hoveredVibe === "Snappy") return BezierLib.fromPoints([0.15, 0], [0.1, 1])
+        if (hoveredVibe === "Smooth") return BezierLib.fromPoints([0.65, 0.05], [0.36, 1])
+        return BezierLib.fromPoints([0.23, 1], [0.32, 1])
+    }
+
+    Timer {
+        id: previewTimer
+        interval: 16
+        repeat: true
+        running: root.opened && root.hoveredVibe !== ""
+        onTriggered: {
+            root.previewProgress += interval / root.previewDuration()
+            if (root.previewProgress >= 1) root.previewProgress = 0
+            previewCanvas.requestPaint()
+        }
     }
 
     FileView {
@@ -177,6 +206,62 @@ Panel {
                 font.pixelSize: Style.font.caption
             }
 
+            Item {
+                width: parent.width
+                height: Style.space(18)
+
+                Canvas {
+                    id: previewCanvas
+                    anchors.fill: parent
+
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        var w = width
+                        var h = height
+                        var gap = Style.space(3)
+                        var workspaceWidth = (w - gap) / 2
+                        var workspaceHeight = h - Style.space(4)
+                        var eased = root.hoveredVibe === ""
+                            ? 0.5
+                            : (root.hoveredVibe === "Instant" ? 1 : root.previewEasing().at(root.previewProgress))
+
+                        ctx.clearRect(0, 0, w, h)
+                        ctx.lineWidth = 1
+                        ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.2)
+                        ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
+                        ctx.fillRect(0, 0, workspaceWidth, workspaceHeight)
+                        ctx.strokeRect(0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                        ctx.fillRect(workspaceWidth + gap, 0, workspaceWidth, workspaceHeight)
+                        ctx.strokeRect(workspaceWidth + gap + 0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+
+                        ctx.fillStyle = Color.muted
+                        ctx.font = Math.max(9, Style.font.caption) + "px sans-serif"
+                        ctx.fillText("1", 5, 13)
+                        ctx.fillText("2", workspaceWidth + gap + 5, 13)
+
+                        var windowWidth = workspaceWidth * 0.58
+                        var windowHeight = workspaceHeight * 0.5
+                        var fromX = workspaceWidth * 0.18
+                        var toX = workspaceWidth + gap + workspaceWidth * 0.18
+                        var x = fromX + (toX - fromX) * eased
+                        var y = (workspaceHeight - windowHeight) / 2 + 2
+                        ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.24)
+                        ctx.strokeStyle = Color.accent
+                        ctx.fillRect(x, y, windowWidth, windowHeight)
+                        ctx.strokeRect(x + 0.5, y + 0.5, windowWidth - 1, windowHeight - 1)
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Hover a preset to preview"
+                    color: Color.muted
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                    visible: root.hoveredVibe === ""
+                }
+            }
+
             Repeater {
                 model: MotionState.VIBES
 
@@ -198,6 +283,15 @@ Panel {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            root.hoveredVibe = modelData.id
+                            root.previewProgress = 0
+                            previewCanvas.requestPaint()
+                        }
+                        onExited: {
+                            root.hoveredVibe = ""
+                            previewCanvas.requestPaint()
+                        }
                         onClicked: root.applyVibe(modelData.id)
                     }
 
