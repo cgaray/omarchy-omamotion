@@ -152,7 +152,10 @@ Panel {
         bar: root.bar
         open: root.opened
         contentWidth: Style.space(330)
-        contentHeight: contentColumn.implicitHeight + Style.space(8)
+        // KeyboardPanel adds its own surface insets around the content.
+        // Leave a generous bottom reserve so the studio action never lands
+        // underneath the card edge on compact themes or font scales.
+        contentHeight: contentColumn.implicitHeight + Style.space(28)
 
         Column {
             id: contentColumn
