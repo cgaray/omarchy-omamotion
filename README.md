@@ -4,10 +4,13 @@ OmaMotion is an Omarchy shell plugin for editing Hyprland animation settings.
 It provides a preset picker, a simple editor, an advanced editor, a curve
 editor, and a live preview.
 
+![OmaMotion studio](preview-overlay.png)
+![OmaMotion bar picker](preview.png)
+
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/cgaray/omamotion.git --enable --yes
+omarchy plugin add https://github.com/cgaray/omarchy-omamotion.git --enable --yes
 ```
 
 Open OmaMotion from the application menu or bind it directly:
@@ -112,6 +115,16 @@ updates or removes an entry carrying that marker.
 - Omarchy 4 with `omarchy-shell`
 - Hyprland 0.56 or newer with Lua configuration support
 - No external runtime dependencies
+
+## Development
+
+Run the local checks before submitting changes:
+
+```bash
+qmllint *.qml
+node tests/preset-store.test.js
+omarchy plugin validate .
+```
 
 ## License
 

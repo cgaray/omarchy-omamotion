@@ -14,8 +14,8 @@ Panel {
     id: root
 
     moduleName: "io.github.cgaray.omamotion"
-    ipcTarget: "io.github.cgaray.omamotion"
-    manageIpc: false
+    ipcTarget: "io.github.cgaray.omamotion.bar"
+    manageIpc: true
 
     property string fileText: ""
     property string activeVibe: ""
@@ -347,10 +347,12 @@ Panel {
                                     root.hoveredVibe = modelData.id
                                     root.hoveredPreset = modelData
                                     root.previewProgress = 0
+                                    previewTimer.restart()
                                     previewCanvas.requestPaint()
                                 }
                                 onExited: {
                                     if (root.hoveredVibe !== modelData.id) return
+                                    previewTimer.stop()
                                     root.hoveredVibe = ""
                                     root.hoveredPreset = null
                                     previewCanvas.requestPaint()
