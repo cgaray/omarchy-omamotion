@@ -206,118 +206,130 @@ Panel {
                 font.pixelSize: Style.font.caption
             }
 
-            Item {
+            Row {
+                id: pickerRow
                 width: parent.width
-                height: Style.space(18)
+                spacing: Style.space(3)
 
-                Canvas {
-                    id: previewCanvas
-                    anchors.fill: parent
+                Column {
+                    id: presetList
+                    width: (parent.width - pickerRow.spacing) * 0.58
+                    spacing: Style.space(2)
 
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        var w = width
-                        var h = height
-                        var gap = Style.space(3)
-                        var workspaceWidth = (w - gap) / 2
-                        var workspaceHeight = h - Style.space(4)
-                        var eased = root.hoveredVibe === ""
-                            ? 0.5
-                            : (root.hoveredVibe === "Instant" ? 1 : root.previewEasing().at(root.previewProgress))
+                    Repeater {
+                        model: MotionState.VIBES
 
-                        ctx.clearRect(0, 0, w, h)
-                        ctx.lineWidth = 1
-                        ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.2)
-                        ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
-                        ctx.fillRect(0, 0, workspaceWidth, workspaceHeight)
-                        ctx.strokeRect(0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
-                        ctx.fillRect(workspaceWidth + gap, 0, workspaceWidth, workspaceHeight)
-                        ctx.strokeRect(workspaceWidth + gap + 0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: presetList.width
+                            height: presetText.implicitHeight + Style.space(4)
+                            radius: 6
+                            color: hover.containsMouse
+                                ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
+                                : "transparent"
+                            border.width: root.activeVibe === modelData.id ? 2 : 1
+                            border.color: root.activeVibe === modelData.id
+                                ? Color.accent
+                                : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.22)
 
-                        ctx.fillStyle = Color.muted
-                        ctx.font = Math.max(9, Style.font.caption) + "px sans-serif"
-                        ctx.fillText("1", 5, 13)
-                        ctx.fillText("2", workspaceWidth + gap + 5, 13)
+                            MouseArea {
+                                id: hover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: {
+                                    root.hoveredVibe = modelData.id
+                                    root.previewProgress = 0
+                                    previewCanvas.requestPaint()
+                                }
+                                onExited: {
+                                    root.hoveredVibe = ""
+                                    previewCanvas.requestPaint()
+                                }
+                                onClicked: root.applyVibe(modelData.id)
+                            }
 
-                        var windowWidth = workspaceWidth * 0.58
-                        var windowHeight = workspaceHeight * 0.5
-                        var fromX = workspaceWidth * 0.18
-                        var toX = workspaceWidth + gap + workspaceWidth * 0.18
-                        var x = fromX + (toX - fromX) * eased
-                        var y = (workspaceHeight - windowHeight) / 2 + 2
-                        ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.24)
-                        ctx.strokeStyle = Color.accent
-                        ctx.fillRect(x, y, windowWidth, windowHeight)
-                        ctx.strokeRect(x + 0.5, y + 0.5, windowWidth - 1, windowHeight - 1)
+                            Column {
+                                id: presetText
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: Style.space(3)
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: Style.space(1)
+
+                                Text {
+                                    text: modelData.name
+                                    color: root.activeVibe === modelData.id ? Color.accent : Color.foreground
+                                    font.family: Style.font.family
+                                    font.pixelSize: Style.font.body
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: modelData.desc
+                                    color: Color.muted
+                                    font.family: Style.font.family
+                                    font.pixelSize: Style.font.caption
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
                     }
                 }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "Hover a preset to preview"
-                    color: Color.muted
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                    visible: root.hoveredVibe === ""
-                }
-            }
+                Item {
+                    width: parent.width - presetList.width - pickerRow.spacing
+                    height: presetList.height
 
-            Repeater {
-                model: MotionState.VIBES
-
-                delegate: Rectangle {
-                    required property var modelData
-                    width: parent.width
-                    height: presetText.implicitHeight + Style.space(4)
-                    radius: 6
-                    color: hover.containsMouse
-                        ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
-                        : "transparent"
-                    border.width: root.activeVibe === modelData.id ? 2 : 1
-                    border.color: root.activeVibe === modelData.id
-                        ? Color.accent
-                        : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.22)
-
-                    MouseArea {
-                        id: hover
+                    Canvas {
+                        id: previewCanvas
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: {
-                            root.hoveredVibe = modelData.id
-                            root.previewProgress = 0
-                            previewCanvas.requestPaint()
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            var w = width
+                            var h = height
+                            var gap = Style.space(3)
+                            var workspaceWidth = (w - gap) / 2
+                            var workspaceHeight = h - Style.space(4)
+                            var eased = root.hoveredVibe === ""
+                                ? 0.5
+                                : (root.hoveredVibe === "Instant" ? 1 : root.previewEasing().at(root.previewProgress))
+
+                            ctx.clearRect(0, 0, w, h)
+                            ctx.lineWidth = 1
+                            ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.2)
+                            ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
+                            ctx.fillRect(0, 0, workspaceWidth, workspaceHeight)
+                            ctx.strokeRect(0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                            ctx.fillRect(workspaceWidth + gap, 0, workspaceWidth, workspaceHeight)
+                            ctx.strokeRect(workspaceWidth + gap + 0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+
+                            ctx.fillStyle = Color.muted
+                            ctx.font = Math.max(9, Style.font.caption) + "px sans-serif"
+                            ctx.fillText("1", 5, 13)
+                            ctx.fillText("2", workspaceWidth + gap + 5, 13)
+
+                            var windowWidth = workspaceWidth * 0.58
+                            var windowHeight = workspaceHeight * 0.5
+                            var fromX = workspaceWidth * 0.18
+                            var toX = workspaceWidth + gap + workspaceWidth * 0.18
+                            var x = fromX + (toX - fromX) * eased
+                            var y = (workspaceHeight - windowHeight) / 2 + 2
+                            ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.24)
+                            ctx.strokeStyle = Color.accent
+                            ctx.fillRect(x, y, windowWidth, windowHeight)
+                            ctx.strokeRect(x + 0.5, y + 0.5, windowWidth - 1, windowHeight - 1)
                         }
-                        onExited: {
-                            root.hoveredVibe = ""
-                            previewCanvas.requestPaint()
-                        }
-                        onClicked: root.applyVibe(modelData.id)
                     }
 
-                    Column {
-                        id: presetText
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.margins: Style.space(3)
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.space(1)
-
-                        Text {
-                            text: modelData.name
-                            color: root.activeVibe === modelData.id ? Color.accent : Color.foreground
-                            font.family: Style.font.family
-                            font.pixelSize: Style.font.body
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            width: parent.width
-                            text: modelData.desc
-                            color: Color.muted
-                            font.family: Style.font.family
-                            font.pixelSize: Style.font.caption
-                            elide: Text.ElideRight
-                        }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Hover a preset"
+                        color: Color.muted
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                        visible: root.hoveredVibe === ""
                     }
                 }
             }

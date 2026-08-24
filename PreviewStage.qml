@@ -101,47 +101,61 @@ Item {
             roundedRect(ctx, 0.5, 0.5, width - 1, height - 1, 10)
             ctx.stroke()
 
-            // Ghost tile hinting where the window lands
-            ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.08)
-            roundedRect(ctx, width * 0.30, height * 0.22, width * 0.40, height * 0.56, 8)
-            ctx.stroke()
-
             if (!root.solver) return
 
             var t = eased()
             var appear = root.mode === "close" ? 1 - t : t
-            var slideOff = slideOffset(appear)
             var w = width, h = height
 
-            var ww = w * 0.40 * lerp(root.popinFrom, 1, appear)
-            var wh = h * 0.56 * lerp(root.popinFrom, 1, appear)
-            var wx = w * 0.30 + (w * 0.40 - ww) / 2 + slideOff.x
-            var wy = h * 0.22 + (h * 0.56 - wh) / 2 + slideOff.y
+            // Two workspace panes make a workspace switch legible. Vertical
+            // slide styles stack the panes so the preview follows the actual
+            // direction instead of always implying a horizontal move.
+            var vertical = slideDir === "top" || slideDir === "bottom"
+            var gap = 14
+            var paneW = vertical ? w * 0.72 : (w - gap) / 2
+            var paneH = vertical ? (h - gap) / 2 : h * 0.72
+            var firstX = vertical ? (w - paneW) / 2 : 0
+            var firstY = vertical ? 0 : (h - paneH) / 2
+            var secondX = vertical ? firstX : firstX + paneW + gap
+            var secondY = vertical ? firstY + paneH + gap : firstY
+
+            function pane(x, y, label) {
+                ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.035)
+                ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.20)
+                ctx.lineWidth = 1
+                roundedRect(ctx, x, y, paneW, paneH, 8)
+                ctx.fill()
+                roundedRect(ctx, x + 0.5, y + 0.5, paneW - 1, paneH - 1, 8)
+                ctx.stroke()
+                ctx.fillStyle = Color.muted
+                ctx.font = "12px sans-serif"
+                ctx.fillText(label, x + 10, y + 18)
+            }
+
+            pane(firstX, firstY, "Workspace 1")
+            pane(secondX, secondY, "Workspace 2")
+
+            var switchT = root.mode === "close" ? 1 - appear : appear
+            if (slideDir === "top") switchT = 1 - switchT
+            var centerX = lerp(firstX + paneW / 2, secondX + paneW / 2, switchT)
+            var centerY = lerp(firstY + paneH / 2, secondY + paneH / 2, switchT)
+            var ww = paneW * 0.54 * lerp(root.popinFrom, 1, appear)
+            var wh = paneH * 0.50 * lerp(root.popinFrom, 1, appear)
+            var wx = centerX - ww / 2
+            var wy = centerY - wh / 2
 
             ctx.globalAlpha = root.doFade ? clamp01(appear) : 1
-
-            // Window card — Hyprland draws no titlebar decorations, so the
-            // mock is just a rounded, accent-bordered surface like the real
-            // thing. A faint inner line hints at content.
-            ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.13)
+            ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.16)
             roundedRect(ctx, wx, wy, ww, wh, 8)
             ctx.fill()
             ctx.strokeStyle = Color.accent
             ctx.lineWidth = 1.5
             roundedRect(ctx, wx, wy, ww, wh, 8)
             ctx.stroke()
-            ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
+            ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.20)
             ctx.lineWidth = 1
             roundedRect(ctx, wx + ww * 0.08, wy + wh * 0.16, ww * 0.84, 2, 1)
             ctx.stroke()
-
-            // Layer mode: a second sheet sliding over
-            if (root.mode === "layer") {
-                var lt = eased() * w * 0.34
-                ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.28)
-                roundedRect(ctx, w - lt, h * 0.18, lt, h * 0.64, 6)
-                ctx.fill()
-            }
 
             ctx.globalAlpha = 1
         }
