@@ -25,6 +25,9 @@ Panel {
     property real previewProgress: 0
     property var customPresets: []
     property int customPresetRev: 0
+    property string pendingConfigText: ""
+    property string pendingVibe: ""
+    property bool configLocked: false      // oversized/unsafe file: never rewrite it
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
@@ -32,12 +35,17 @@ Panel {
     function normalizeParsed(parsed) {
         var s = MotionState.defaultState()
         var name
-        for (name in parsed.curves) s.curves[name] = parsed.curves[name]
+        // Curve names read from looknfeel.lua are shown as Button labels and
+        // written back into the Lua block. Keep them to the token charset so
+        // neither path has to deal with markup or quotes.
+        for (name in parsed.curves)
+            if (PresetStore.validToken(name)) s.curves[name] = parsed.curves[name]
         for (var leaf in parsed.animations) {
             var t = parsed.animations[leaf]
             var entry = { enabled: !!t.enabled }
             if (typeof t.speed === "number") entry.speed = t.speed
-            if (typeof t.bezier === "string") entry.bezier = t.bezier
+            if (typeof t.bezier === "string"
+                && (t.bezier === "default" || s.curves[t.bezier])) entry.bezier = t.bezier
             entry.style = typeof t.style === "string" ? t.style : ""
             s.animations[leaf] = entry
         }
@@ -45,8 +53,18 @@ Panel {
     }
 
     function reloadState() {
-        fileText = configFile.text()
-        var result = LuaConfig.readState(fileText)
+        var text = configFile.text()
+        var result = LuaConfig.readState(text)
+        // A file this large is not a looknfeel.lua we should be parsing, let
+        // alone rewriting. Applying presets stays disabled until it shrinks.
+        if (result.oversize) {
+            fileText = ""
+            configLocked = true
+            activeVibe = ""
+            return
+        }
+        configLocked = false
+        fileText = text
         if (!result.found || result.error) {
             activeVibe = "Balanced"
             return
@@ -97,39 +115,51 @@ Panel {
             ? s.animations.workspaces : s.animations.windowsIn
     }
 
+    // Both apply paths hand the new file to ConfigWriter, which stages it and
+    // renames it into place; fileText only advances once that succeeds.
+    function commitConfig(nextText, nextVibe) {
+        pendingConfigText = nextText
+        pendingVibe = nextVibe
+        suppressEcho = true
+        configWriter.write(nextText)
+        root.close()
+    }
+
+    function onConfigWritten(ok) {
+        if (!ok) {
+            suppressEcho = false
+            configFile.reload()
+            return
+        }
+        fileText = pendingConfigText
+        activeVibe = pendingVibe
+    }
+
     function applyVibe(id) {
+        if (configLocked) return
         var result = LuaConfig.readState(fileText)
         var state = result.found && !result.error
             ? normalizeParsed(result.state)
             : MotionState.defaultState()
         var nextState = MotionState.applyPreset(state, MotionState.VIBE_PRESET[id])
-        var nextText = LuaConfig.applyToText(
+        commitConfig(LuaConfig.applyToText(
             fileText,
             LuaConfig.generateBody(nextState, MotionState.LEAVES.map(function (m) { return m.leaf }))
-        )
-        suppressEcho = true
-        configFile.setText(nextText)
-        fileText = nextText
-        activeVibe = id
-        root.close()
+        ), id)
     }
 
     function applyCustomPreset(item) {
+        if (configLocked) return
         var result = LuaConfig.readState(fileText)
         var state = result.found && !result.error
             ? normalizeParsed(result.state) : MotionState.defaultState()
         if (!item.state || !item.state.animations) return
         state.animations = JSON.parse(JSON.stringify(item.state.animations))
         if (item.state.curves) state.curves = JSON.parse(JSON.stringify(item.state.curves))
-        var nextText = LuaConfig.applyToText(
+        commitConfig(LuaConfig.applyToText(
             fileText,
             LuaConfig.generateBody(state, MotionState.LEAVES.map(function (m) { return m.leaf }))
-        )
-        suppressEcho = true
-        configFile.setText(nextText)
-        fileText = nextText
-        activeVibe = item.name
-        root.close()
+        ), item.name)
     }
 
     function applyItem(item) {
@@ -166,6 +196,12 @@ Panel {
             if (root.previewProgress >= 1) root.previewProgress = 0
             previewCanvas.requestPaint()
         }
+    }
+
+    ConfigWriter {
+        id: configWriter
+        path: configFile.path
+        onWritten: function (ok, message) { root.onConfigWritten(ok) }
     }
 
     FileView {
@@ -263,9 +299,11 @@ Panel {
         bar: root.bar
         iconComponent: motionIcon
         active: root.activeVibe !== ""
+        // BarIconButton renders this; we cannot set its textFormat, so the
+        // user-authored preset name is stripped of markup instead.
         tooltipText: root.activeVibe === ""
             ? "Motion presets"
-            : "Motion: " + root.activeVibe
+            : "Motion: " + PresetStore.plainName(root.activeVibe)
         onPressed: function(buttonCode) {
             if (buttonCode === Qt.RightButton) root.openStudio()
             else root.toggle()
@@ -296,7 +334,10 @@ Panel {
             }
             Text {
                 width: parent.width
-                text: "Choose how your desktop moves."
+                textFormat: Text.PlainText
+                text: root.configLocked
+                    ? "looknfeel.lua is over 1 MiB — presets are disabled."
+                    : "Choose how your desktop moves."
                 color: Color.muted
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
@@ -370,6 +411,11 @@ Panel {
 
                                 Text {
                                     text: modelData.name
+                                    // Saved preset names come from presets.json;
+                                    // AutoText would sniff them as rich text.
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    width: parent.width
                                     color: root.activeVibe === modelData.name ? Color.accent : Color.foreground
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.body
@@ -378,6 +424,7 @@ Panel {
                                 Text {
                                     width: parent.width
                                     text: modelData.desc
+                                    textFormat: Text.PlainText
                                     color: Color.muted
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.caption

@@ -16,6 +16,34 @@
 var BEGIN = "-- >>> omamotion managed block >>>"
 var END = "-- <<< omamotion managed block <<<"
 
+// looknfeel.lua is a hand-written config file; a sane one is a few KiB.
+// Anything past this is either not the file we think it is or a hostile
+// input, so it is refused before the scanner walks it and before any
+// writer is allowed to rewrite it.
+var MAX_CONFIG_BYTES = 1048576
+
+// ------------------------------------------------------------ sizing
+
+// QML strings are UTF-16, so length() is not a byte count. ConfigWriter
+// hands the same number to its helper, which compares it against the
+// staged file before renaming it over the live config.
+function utf8Length(text) {
+    var s = String(text === undefined || text === null ? "" : text)
+    var bytes = 0
+    for (var i = 0; i < s.length; i++) {
+        var code = s.charCodeAt(i)
+        if (code < 0x80) bytes += 1
+        else if (code < 0x800) bytes += 2
+        else if (code >= 0xD800 && code <= 0xDBFF && i + 1 < s.length) { bytes += 4; i++ }
+        else bytes += 3
+    }
+    return bytes
+}
+
+function exceedsLimit(text) {
+    return utf8Length(text) > MAX_CONFIG_BYTES
+}
+
 // ------------------------------------------------------------ reading
 
 function findBlock(text) {
@@ -27,6 +55,9 @@ function findBlock(text) {
 }
 
 function readState(text) {
+    if (exceedsLimit(text))
+        return { found: false, oversize: true, state: null,
+                 error: "looknfeel.lua is larger than 1 MiB — refusing to parse it" }
     var block = findBlock(text)
     if (!block) return { found: false, state: null, error: "" }
     if (block.unclosed) return { found: true, state: null, error: "managed block is missing its closing fence" }
@@ -218,6 +249,12 @@ function fmtPoints(p1, p2) {
     return "{ { " + fmtNum(p1[0]) + ", " + fmtNum(p1[1]) + " }, { " + fmtNum(p2[0]) + ", " + fmtNum(p2[1]) + " } }"
 }
 
+// A value safe to drop between double quotes in generated Lua: no quote,
+// backslash, bracket or control character that could end the literal.
+function isLuaSafe(value) {
+    return typeof value === "string" && /^[A-Za-z0-9 _%.-]*$/.test(value)
+}
+
 function luaTable(entries) {
     var parts = []
     for (var i = 0; i < entries.length; i++)
@@ -240,6 +277,7 @@ function generateBody(state, leafOrder) {
     var ordered = stock.concat(custom)
     for (var c = 0; c < ordered.length; c++) {
         var nm = ordered[c], cv = state.curves[nm]
+        if (!isLuaSafe(nm)) continue
         lines.push('hl.curve("' + nm + '", { type = "bezier", points = '
                    + fmtPoints(cv.p1, cv.p2) + ' })')
     }
@@ -249,8 +287,11 @@ function generateBody(state, leafOrder) {
         if (!a) continue
         var entries = [["leaf", '"' + leaf + '"'], ["enabled", a.enabled ? "true" : "false"]]
         if (a.speed !== undefined) entries.push(["speed", fmtNum(a.speed)])
-        if (a.bezier) entries.push(["bezier", '"' + a.bezier + '"'])
-        if (a.style && a.style !== "") entries.push(["style", '"' + a.style + '"'])
+        // Names and styles can originate in the file we are about to rewrite.
+        // Emit them only when they cannot terminate the Lua string literal.
+        if (a.bezier && isLuaSafe(a.bezier)) entries.push(["bezier", '"' + a.bezier + '"'])
+        if (a.style && a.style !== "" && isLuaSafe(a.style))
+            entries.push(["style", '"' + a.style + '"'])
         lines.push("hl.animation(" + luaTable(entries) + ")")
     }
     return lines.join("\n")

@@ -21,6 +21,16 @@ var STYLES = {
     workspaces: ["", "fade", "slide", "slidevert", "swipe"]
 }
 
+// Preset names are user-authored strings that reach QML text properties.
+// Anywhere we own the Text item we set textFormat: Text.PlainText; this is
+// for the places we do not own it (bar tooltips, Button labels), where Qt
+// would otherwise sniff the string and render it as rich text.
+function plainName(name) {
+    return String(name === undefined || name === null ? "" : name)
+        .replace(/[<>&]/g, " ")
+        .replace(/[\u0000-\u001f\u007f]/g, " ")
+}
+
 function isFiniteNumber(value) {
     return typeof value === "number" && isFinite(value)
 }
