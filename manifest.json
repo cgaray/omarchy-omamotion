@@ -6,9 +6,19 @@
   "author": "Christopher Garay",
   "license": "MIT",
   "description": "Visual motion studio for Hyprland animations: edit every animation leaf, draw bezier curves by hand, and watch a live preview before anything touches your config.",
-  "kinds": ["panel", "service"],
+  "kinds": ["panel", "service", "bar-widget"],
   "entryPoints": {
     "panel": "MotionPanel.qml",
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "barWidget": "PresetBar.qml"
+  },
+  "barWidget": {
+    "displayName": "Motion",
+    "description": "Switch the desktop's animation personality from the status bar.",
+    "category": "Appearance",
+    "aliases": ["motion", "presets", "omamotion"],
+    "allowMultiple": false,
+    "defaults": {},
+    "schema": []
   }
 }

@@ -13,7 +13,8 @@ styles as *Pop* / *Slide & fade*). The **Advanced** tab holds the full
 studio: every animation leaf Omarchy ships, a hand-draggable bezier editor
 with a live tracer, custom curves, and raw style tokens.
 
-No network access. No sudo. No background service.
+No network access. No sudo. The optional launcher/bar integration is a tiny
+local service; it has no daemon of its own.
 
 <p align="center"><img src="preview.png" alt="The OmaMotion panel: leaf list on the left, bezier curve editor and animated preview on the right" width="880"></p>
 
@@ -35,6 +36,22 @@ To remove it:
 ```bash
 omarchy plugin remove io.github.cgaray.omamotion --yes
 ```
+
+## Status bar presets
+
+OmaMotion adds a small `≈` button to the right side of the Omarchy bar. Click
+it to choose Instant, Snappy, Balanced, Smooth, or Playful without opening the
+studio. Right-click the button to open the full studio.
+
+If you installed the repository manually, enable the bar widget with:
+
+```bash
+omarchy plugin enable io.github.cgaray.omamotion right
+```
+
+The bar picker is intentionally simple: each choice applies immediately and
+closes the popup. The studio is there when you want to understand or tune the
+details.
 
 **Reset all** (or removing the plugin) takes the managed block with it and
 restores your `looknfeel.lua` byte for byte.

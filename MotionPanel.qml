@@ -448,6 +448,27 @@ Item {
                 }
 
                 // Vibe cards ---------------------------------------------------
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(1)
+
+                    Text {
+                        text: "How should your desktop feel?"
+                        color: Color.foreground
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.body
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: root.advancedMode
+                            ? "Choose a starting point, then tune every detail below."
+                            : "Choose one. You can change it any time from the bar."
+                        color: Color.muted
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Style.space(2)
