@@ -45,8 +45,13 @@ Item {
     property string statusText: ""
     property string fileText: ""
     property bool advancedMode: false
+    property string hoveredVibe: ""
     property int stateRev: 0            // bumped on in-place mutations so
                                         // vibe-highlight bindings re-evaluate
+
+    readonly property var previewState: hoveredVibe === ""
+        ? state
+        : MotionState.applyPreset(MotionState.defaultState(), MotionState.VIBE_PRESET[hoveredVibe])
 
     function leafOrder() {
         return MotionState.LEAVES.map(function (m) { return m.leaf })
@@ -498,6 +503,15 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: {
+                                    root.hoveredVibe = vibeCard.modelData.id
+                                    root.selectedLeaf = "windowsIn"
+                                    Qt.callLater(function() { previewStage.trigger("open") })
+                                }
+                                onExited: {
+                                    root.hoveredVibe = ""
+                                    Qt.callLater(function() { previewStage.trigger("open") })
+                                }
                                 onClicked: {
                                     root.selectedLeaf = "windowsIn"
                                     root.applyPreset(MotionState.VIBE_PRESET[vibeCard.modelData.id])
@@ -668,8 +682,9 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             spec: ({
-                                entry: root.state.animations[root.selectedLeaf],
-                                curves: root.state.curves
+                                entry: root.previewState.animations[root.hoveredVibe === ""
+                                    ? root.selectedLeaf : "windowsIn"],
+                                curves: root.previewState.curves
                             })
                         }
                     }
