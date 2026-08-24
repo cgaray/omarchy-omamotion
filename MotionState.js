@@ -151,3 +151,112 @@ function scaled(anims, factor) {
 function round2(v) { return Math.round(v * 100) / 100 }
 
 function clampSpeed(v) { return Math.min(SPEED_MAX, Math.max(SPEED_MIN, v)) }
+
+// --------------------------------------------------------- friendly layer
+
+// One-click vibes. preset refers to a presetNames() entry.
+var VIBES = [
+    { id: "Instant",  name: "Instant",  desc: "No animation — windows just appear." },
+    { id: "Snappy",   name: "Snappy",   desc: "Quick and minimal. For getting things done." },
+    { id: "Balanced", name: "Balanced", desc: "The Omarchy default. Gentle and clear." },
+    { id: "Smooth",   name: "Smooth",   desc: "Slower and softer, almost cinematic." },
+    { id: "Playful",  name: "Playful",  desc: "Bouncy slides and big pops. Shows off." }
+]
+
+var VIBE_PRESET = {
+    "Instant": "Instant", "Snappy": "Snappy", "Balanced": "Omarchy stock",
+    "Smooth": "Butter", "Playful": "Dramatic"
+}
+
+// Simple-mode sections: plain names, curated leaves (global and fadeSwitch
+// stay advanced-only — a master multiplier and a niche toggle confuse more
+// than they help).
+var SIMPLE_GROUPS = [
+    { name: "Windows",        leaves: ["windows", "windowsIn", "windowsOut"] },
+    { name: "Menus & panels", leaves: ["layers", "layersIn", "layersOut", "fadeLayersIn", "fadeLayersOut"] },
+    { name: "Fades",          leaves: ["fadeIn", "fadeOut", "fade"] },
+    { name: "Desktops",       leaves: ["workspaces"] },
+    { name: "Borders",        leaves: ["border"] }
+]
+
+var LEAF_LABELS = {
+    "windows": "Move & resize", "windowsIn": "Window opens", "windowsOut": "Window closes",
+    "layers": "Panel move", "layersIn": "Panel opens", "layersOut": "Panel closes",
+    "fadeLayersIn": "Panel fades in", "fadeLayersOut": "Panel fades out",
+    "fadeIn": "Fade in", "fadeOut": "Fade out", "fade": "Dim & overlay fade",
+    "workspaces": "Desktop switch", "border": "Border draw", "global": "Master speed",
+    "fadeSwitch": "Workspace fade"
+}
+
+// Curated style choices for Simple mode: [token, label] pairs.
+var SIMPLE_STYLES = {
+    "windows": [
+        ["", "Plain"], ["fade", "Fade"], ["slide", "Slide"], ["popin 87%", "Pop"],
+        ["slide fade", "Slide & fade"], ["popin 87% fade", "Pop & fade"]
+    ],
+    "layers": [
+        ["", "Plain"], ["fade", "Fade"], ["slide", "Slide"]
+    ],
+    "workspaces": [
+        ["", "Plain"], ["fade", "Fade"], ["slide", "Slide"],
+        ["slidevert", "Slide vertically"], ["swipe", "Swipe"]
+    ]
+}
+
+function simpleGroupNames() {
+    return SIMPLE_GROUPS.map(function (g) { return g.name })
+}
+
+function simpleGroupLeaves(groupName) {
+    for (var i = 0; i < SIMPLE_GROUPS.length; i++)
+        if (SIMPLE_GROUPS[i].name === groupName) return SIMPLE_GROUPS[i].leaves
+    return []
+}
+
+function leafLabel(leaf) {
+    return Object.prototype.hasOwnProperty.call(LEAF_LABELS, leaf) ? LEAF_LABELS[leaf] : leaf
+}
+
+function simpleStylesFor(family) {
+    return Object.prototype.hasOwnProperty.call(SIMPLE_STYLES, family) ? SIMPLE_STYLES[family] : null
+}
+
+function simpleStyleLabels(family) {
+    var pairs = simpleStylesFor(family)
+    return pairs ? pairs.map(function (p) { return p[1] }) : []
+}
+
+function simpleStyleToken(family, label) {
+    var pairs = simpleStylesFor(family)
+    if (pairs) for (var i = 0; i < pairs.length; i++)
+        if (pairs[i][1] === label) return pairs[i][0]
+    return ""
+}
+
+function simpleStyleLabel(family, token) {
+    var pairs = simpleStylesFor(family)
+    if (pairs) for (var i = 0; i < pairs.length; i++)
+        if (pairs[i][0] === token) return pairs[i][1]
+    return token === "" ? "Plain" : token
+}
+
+// Hyprland speeds are durations: higher = slower.
+function speedWord(v) {
+    if (v <= 1.5) return "Very fast"
+    if (v <= 3) return "Fast"
+    if (v <= 5) return "Balanced"
+    if (v <= 7.5) return "Relaxed"
+    return "Slow"
+}
+
+// Which vibe (if any) the current animations match. rev is a change
+// counter passed in so QML bindings re-evaluate after in-place mutations.
+function currentVibe(state, rev) {
+    void rev
+    var cur = JSON.stringify(state.animations)
+    for (var i = 0; i < VIBES.length; i++) {
+        var probe = applyPreset(cloneState(state), VIBE_PRESET[VIBES[i].id])
+        if (JSON.stringify(probe.animations) === cur) return VIBES[i].id
+    }
+    return ""
+}

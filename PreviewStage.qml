@@ -120,7 +120,9 @@ Item {
 
             ctx.globalAlpha = root.doFade ? clamp01(appear) : 1
 
-            // Window card with titlebar dots
+            // Window card — Hyprland draws no titlebar decorations, so the
+            // mock is just a rounded, accent-bordered surface like the real
+            // thing. A faint inner line hints at content.
             ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.13)
             roundedRect(ctx, wx, wy, ww, wh, 8)
             ctx.fill()
@@ -128,12 +130,10 @@ Item {
             ctx.lineWidth = 1.5
             roundedRect(ctx, wx, wy, ww, wh, 8)
             ctx.stroke()
-            for (var d = 0; d < 3; d++) {
-                ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.35)
-                ctx.beginPath()
-                ctx.arc(wx + 12 + d * 11, wy + 11, 2.6, 0, Math.PI * 2)
-                ctx.fill()
-            }
+            ctx.strokeStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.18)
+            ctx.lineWidth = 1
+            roundedRect(ctx, wx + ww * 0.08, wy + wh * 0.16, ww * 0.84, 2, 1)
+            ctx.stroke()
 
             // Layer mode: a second sheet sliding over
             if (root.mode === "layer") {

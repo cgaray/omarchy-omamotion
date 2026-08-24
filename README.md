@@ -1,12 +1,17 @@
 # OmaMotion
 
-**A motion studio for Hyprland — draw your easing curves, tune every animation
-leaf, feel the result live, then save it as plain Lua.**
+**A motion studio for Hyprland — pick a vibe, feel it live, done.**
 
 An Omarchy shell plugin. Omaland gave Hyprland's geometry a GUI and Aether gave
-color one; OmaMotion completes the trio for **motion**: every animation leaf
-Omarchy ships, a hand-draggable bezier editor, an approximate live preview,
-and one-click presets.
+color one; OmaMotion completes the trio for **motion**.
+
+Most people need exactly one thing: a *vibe*. The panel opens on five big
+cards — Instant, Snappy, Balanced, Smooth, Playful. Click one, Hyprland
+changes immediately, done. Beneath them a **Simple** tab speaks plain English
+("Window opens", "Panel fades out", speeds as *Fast* / *Balanced* / *Relaxed*,
+styles as *Pop* / *Slide & fade*). The **Advanced** tab holds the full
+studio: every animation leaf Omarchy ships, a hand-draggable bezier editor
+with a live tracer, custom curves, and raw style tokens.
 
 No network access. No sudo. No background service.
 
@@ -69,10 +74,13 @@ approximate QML transforms. It is deliberately labelled approximate: the real
 compositor is always one save away, and writes apply live because Hyprland
 watches the file.
 
-## Presets
+## Vibes (presets)
 
-**Omarchy stock · Butter · Snappy · Dramatic · Instant** — presets replace the
-animation table wholesale and keep your curve library intact.
+The five cards map to full-animation presets: **Balanced** = Omarchy stock,
+**Smooth** = Butter, **Playful** = Dramatic. Applying a vibe saves instantly
+and keeps your custom curve library intact. The active vibe highlights
+itself; the moment you hand-tune anything, no card is highlighted — honest
+state, no pretending.
 
 ## How it works
 

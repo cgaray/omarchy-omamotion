@@ -44,6 +44,9 @@ Item {
     property bool blockOnDisk: false
     property string statusText: ""
     property string fileText: ""
+    property bool advancedMode: false
+    property int stateRev: 0            // bumped on in-place mutations so
+                                        // vibe-highlight bindings re-evaluate
 
     function leafOrder() {
         return MotionState.LEAVES.map(function (m) { return m.leaf })
@@ -72,6 +75,7 @@ Item {
 
     function markChanged(label) {
         statusText = label ? label + " — unsaved" : "Unsaved"
+        stateRev++
         saveTimer.restart()
     }
 
@@ -212,7 +216,8 @@ Item {
     function applyPreset(name) {
         root.state = MotionState.applyPreset(root.state, name)
         refreshEditor()
-        markChanged("Preset: " + name)
+        saveNow()
+        statusText = "Preset applied — " + name
     }
 
     property bool confirmReset: false
@@ -242,15 +247,18 @@ Item {
         id: leafRow
 
         property string leafName: ""
+        property bool simple: false
         readonly property var meta: MotionState.leafMeta(leafName) || {}
         readonly property bool hasSpeed: meta.speed !== undefined
             || (root.entryVal(leafName, "speed", null) !== null)
         readonly property bool hasBezier: meta.bezier !== undefined
-        readonly property bool hasStyles: MotionState.stylesFor(meta.family || "").length > 1
+        readonly property bool hasStyles: simple
+            ? MotionState.simpleStylesFor(meta.family || "") !== null
+            : MotionState.stylesFor(meta.family || "").length > 1
         readonly property bool previewing: root.selectedLeaf === leafName
 
         width: leafList.width
-        height: rowInner.height + Style.space(2)
+        height: rowInner.height + Style.space(3)
         radius: 6
         color: mouse.containsMouse || previewing
                ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.10)
@@ -267,14 +275,17 @@ Item {
         Column {
             id: rowInner
             x: Style.space(2)
-            spacing: Style.space(1)
+            spacing: Style.space(2)
 
             Item {
                 width: leafRow.width - Style.space(4)
-                height: Style.space(5)
+                height: Math.max(sw.implicitHeight, Style.space(6))
 
                 ToggleSwitch {
                     id: sw
+                    width: implicitWidth
+                    height: implicitHeight
+                    anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     checked: !!root.entryVal(leafRow.leafName, "enabled", false)
                     onToggled: root.setEnabled(leafRow.leafName, checked)
@@ -282,35 +293,37 @@ Item {
 
                 Text {
                     anchors.left: sw.right
-                    anchors.leftMargin: Style.space(2)
+                    anchors.leftMargin: Style.space(3)
+                    anchors.right: speedRow.visible ? speedRow.left : parent.right
+                    anchors.rightMargin: Style.space(2)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: leafRow.leafName
+                    text: {
+                        var label = leafRow.simple
+                            ? MotionState.leafLabel(leafRow.leafName)
+                            : leafRow.leafName
+                        return leafRow.previewing ? label + "  ◀" : label
+                    }
+                    elide: Text.ElideRight
                     color: leafRow.previewing ? Color.accent : Color.foreground
                     font.family: Style.font.family
                     font.pixelSize: Style.font.bodySmall
                 }
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: leafRow.previewing ? "◀ preview" : ""
-                    color: Color.muted
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                }
-
                 Row {
+                    id: speedRow
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     visible: leafRow.hasSpeed
                     spacing: Style.space(2)
 
                     Text {
-                        text: Number(root.entryVal(leafRow.leafName, "speed", 0)).toFixed(2)
+                        text: leafRow.simple
+                              ? MotionState.speedWord(root.entryVal(leafRow.leafName, "speed", 0))
+                              : Number(root.entryVal(leafRow.leafName, "speed", 0)).toFixed(2)
                         color: Color.muted
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
-                        width: 32
+                        width: leafRow.simple ? 70 : 32
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     PanelSlider {
@@ -334,11 +347,11 @@ Item {
             }
 
             Row {
-                visible: leafRow.hasBezier || leafRow.hasStyles
+                visible: (leafRow.hasBezier && !leafRow.simple) || leafRow.hasStyles
                 spacing: Style.space(2)
 
                 Dropdown {
-                    visible: leafRow.hasBezier
+                    visible: leafRow.hasBezier && !leafRow.simple
                     width: 150
                     value: String(root.entryVal(leafRow.leafName, "bezier", ""))
                     options: root.curveOptions()
@@ -348,9 +361,20 @@ Item {
                     visible: leafRow.hasStyles
                     width: 170
                     showLabel: false
-                    value: String(root.entryVal(leafRow.leafName, "style", ""))
-                    options: MotionState.stylesFor(leafRow.meta.family || "")
-                    onChanged: function(v) { root.setStyle(leafRow.leafName, v) }
+                    value: leafRow.simple
+                        ? MotionState.simpleStyleLabel(leafRow.meta.family || "",
+                                                       String(root.entryVal(leafRow.leafName, "style", "")))
+                        : String(root.entryVal(leafRow.leafName, "style", ""))
+                    options: leafRow.simple
+                        ? MotionState.simpleStyleLabels(leafRow.meta.family || "")
+                        : MotionState.stylesFor(leafRow.meta.family || "")
+                    onChanged: function(v) {
+                        if (leafRow.simple)
+                            root.setStyle(leafRow.leafName,
+                                          MotionState.simpleStyleToken(leafRow.meta.family || "", v))
+                        else
+                            root.setStyle(leafRow.leafName, v)
+                    }
                 }
             }
         }
@@ -362,7 +386,7 @@ Item {
         title: "OmaMotion — Hyprland motion studio"
         color: Color.background
         implicitWidth: 960
-        implicitHeight: 660
+        implicitHeight: 730
         minimumSize: Qt.size(880, 600)
 
         onVisibleChanged: {
@@ -407,19 +431,83 @@ Item {
                         font.pixelSize: Style.font.bodySmall
                     }
                     Item { Layout.fillWidth: true }
-                    Dropdown {
-                        id: presetDropdown
-                        Layout.preferredWidth: 190
-                        value: "Presets"
-                        options: MotionState.presetNames()
-                        onChanged: function(v) {
-                            root.applyPreset(v)
-                            presetDropdown.value = "Presets"
-                        }
+                    Button {
+                        text: "Simple"
+                        selected: !root.advancedMode
+                        onClicked: root.advancedMode = false
+                    }
+                    Button {
+                        text: "Advanced"
+                        selected: root.advancedMode
+                        onClicked: root.advancedMode = true
                     }
                     Button {
                         text: root.confirmReset ? "Really reset?" : "Reset all"
                         onClicked: root.resetAll()
+                    }
+                }
+
+                // Vibe cards ---------------------------------------------------
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(2)
+
+                    Repeater {
+                        model: MotionState.VIBES
+
+                        delegate: Rectangle {
+                            id: vibeCard
+
+                            required property var modelData
+                            readonly property bool active: MotionState.currentVibe(root.state, root.stateRev) === modelData.id
+
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: vibeColumn.implicitHeight + Style.space(4)
+                            radius: 8
+                            color: mouse.containsMouse
+                                   ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
+                                   : "transparent"
+                            border.width: active ? 2 : 1
+                            border.color: active ? Color.accent
+                                                 : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.25)
+                            Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                            MouseArea {
+                                id: mouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.selectedLeaf = "windowsIn"
+                                    root.applyPreset(MotionState.VIBE_PRESET[vibeCard.modelData.id])
+                                }
+                            }
+
+                            Column {
+                                id: vibeColumn
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: Style.space(3)
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: Style.space(1)
+
+                                Text {
+                                    text: vibeCard.modelData.name
+                                    color: vibeCard.active ? Color.accent : Color.foreground
+                                    font.family: Style.font.family
+                                    font.pixelSize: Style.font.body
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: vibeCard.modelData.desc
+                                    color: Color.muted
+                                    font.family: Style.font.family
+                                    font.pixelSize: Style.font.caption
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -447,7 +535,9 @@ Item {
                             spacing: Style.space(1)
 
                             Repeater {
-                                model: MotionState.GROUP_ORDER
+                                model: root.advancedMode
+                                       ? MotionState.GROUP_ORDER
+                                       : MotionState.simpleGroupNames()
 
                                 delegate: Column {
                                     required property string modelData
@@ -462,10 +552,13 @@ Item {
                                     }
 
                                     Repeater {
-                                        model: root.leavesInGroup(modelData)
+                                        model: root.advancedMode
+                                            ? root.leavesInGroup(modelData)
+                                            : MotionState.simpleGroupLeaves(modelData)
 
                                         delegate: LeafRow {
                                             leafName: modelData
+                                            simple: !root.advancedMode
                                         }
                                     }
                                 }
@@ -478,66 +571,76 @@ Item {
                         Layout.fillHeight: true
                         spacing: Style.space(2)
 
-                        Flow {
-                            id: curveChips
+                        // Advanced-only: curve chips, editor, custom curves.
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            visible: root.advancedMode
                             spacing: Style.space(2)
 
-                            property var model: []
-                            function rebuild() {
-                                model = Object.keys(root.state.curves)
+                            Flow {
+                                id: curveChips
+                                Layout.fillWidth: true
+                                spacing: Style.space(2)
+
+                                property var model: []
+                                function rebuild() {
+                                    model = Object.keys(root.state.curves)
+                                }
+                                Component.onCompleted: rebuild()
+
+                                Repeater {
+                                    model: curveChips.model
+
+                                    delegate: Button {
+                                        required property string modelData
+                                        text: modelData
+                                        selected: root.activeCurve === modelData
+                                        onClicked: root.selectCurve(modelData)
+                                    }
+                                }
                             }
-                            Component.onCompleted: rebuild()
 
-                            Repeater {
-                                model: curveChips.model
+                            CurveEditor {
+                                id: curveEditor
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 230
+                                sweepMs: root.previewDurationHint()
+                                onEdited: root.commitCurve()
+                            }
 
-                                delegate: Button {
-                                    required property string modelData
-                                    text: modelData
-                                    selected: root.activeCurve === modelData
-                                    onClicked: root.selectCurve(modelData)
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Style.space(2)
+
+                                TextField {
+                                    id: newCurveName
+                                    Layout.preferredWidth: 200
+                                    placeholderText: "new curve name"
+                                    onAccepted: root.addCustomCurve()
+                                }
+                                Button { text: "Add as new"; onClicked: root.addCustomCurve() }
+                                Button {
+                                    text: "Delete"
+                                    enabled: !MotionState.isEditableCurve(root.activeCurve)
+                                    onClicked: root.removeCustomCurve()
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: root.activeCurve + " drives "
+                                          + root.curveUsage(root.activeCurve)
+                                          + (root.curveUsage(root.activeCurve) === 1 ? " leaf ·" : " leaves ·")
+                                          + " sweep ≈ " + Math.round(curveEditor.sweepMs) + " ms"
+                                    color: Color.muted
+                                    font.family: Style.font.family
+                                    font.pixelSize: Style.font.caption
                                 }
                             }
                         }
 
-                        CurveEditor {
-                            id: curveEditor
+                        PanelSeparator {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 230
-                            sweepMs: root.previewDurationHint()
-                            onEdited: root.commitCurve()
+                            visible: root.advancedMode
                         }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Style.space(2)
-
-                            TextField {
-                                id: newCurveName
-                                Layout.preferredWidth: 200
-                                placeholderText: "new curve name"
-                                onAccepted: root.addCustomCurve()
-                            }
-                            Button { text: "Add as new"; onClicked: root.addCustomCurve() }
-                            Button {
-                                text: "Delete"
-                                enabled: !MotionState.isEditableCurve(root.activeCurve)
-                                onClicked: root.removeCustomCurve()
-                            }
-                            Item { Layout.fillWidth: true }
-                            Text {
-                                text: root.activeCurve + " drives "
-                                      + root.curveUsage(root.activeCurve)
-                                      + (root.curveUsage(root.activeCurve) === 1 ? " leaf ·" : " leaves ·")
-                                      + " sweep ≈ " + Math.round(curveEditor.sweepMs) + " ms"
-                                color: Color.muted
-                                font.family: Style.font.family
-                                font.pixelSize: Style.font.caption
-                            }
-                        }
-
-                        PanelSeparator { Layout.fillWidth: true }
 
                         PreviewStage {
                             id: previewStage
@@ -566,7 +669,9 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     Text {
-                        text: "Esc closes · writes a fenced block in ~/.config/hypr/looknfeel.lua"
+                        text: root.advancedMode
+                            ? "Esc closes · writes a fenced block in ~/.config/hypr/looknfeel.lua"
+                            : "Pick a vibe, or fine-tune below. Switch to Advanced for curves."
                         color: Color.muted
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
