@@ -49,6 +49,11 @@ Item {
     property string customPresetName: ""
     property var customPresets: []
     property string pendingPresetText: ""
+    property string pendingConfigText: ""
+    property bool pendingRemoval: false
+    property bool configLocked: false      // oversized/unsafe file: never rewrite it
+    property string lockReason: ""
+    property bool backupAvailable: false
     property string hoveredVibe: ""
     property int stateRev: 0            // bumped on in-place mutations so
                                         // vibe-highlight bindings re-evaluate
@@ -80,6 +85,24 @@ Item {
             root.statusText = "~/.config/hypr/looknfeel.lua not found"
             root.state = MotionState.defaultState()
         }
+    }
+
+    // looknfeel.lua is the user's live Hyprland config. It is replaced
+    // wholesale via rename(2) so an interrupted save can never truncate it.
+    ConfigWriter {
+        id: configWriter
+        path: configFile.path
+        onWritten: function (ok, message) { root.onConfigWritten(ok, message) }
+        onRestored: function (ok, message) { root.onConfigRestored(ok, message) }
+    }
+
+    FileView {
+        id: backupFile
+        path: configFile.path + ".omamotion.bak"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.backupAvailable = text() !== ""
+        onLoadFailed: root.backupAvailable = false
     }
 
     FileView {
@@ -157,24 +180,75 @@ Item {
         onTriggered: root.saveNow()
     }
 
+    // The editor's view of the file only advances once ConfigWriter reports
+    // the bytes are down, so a refused or failed write leaves fileText
+    // matching what is actually on disk.
     function saveNow() {
+        if (root.configLocked) {
+            root.statusText = root.lockReason
+            return
+        }
         var body = LuaConfig.generateBody(root.state, root.leafOrder())
-        var next = LuaConfig.applyToText(root.fileText, body)
+        root.pendingConfigText = LuaConfig.applyToText(root.fileText, body)
+        root.pendingRemoval = false
         configFile.suppressEcho = true
-        configFile.setText(next)
-        root.fileText = next
-        root.blockOnDisk = true
-        root.statusText = "Saved — Hyprland applies live"
+        root.statusText = "Saving..."
+        configWriter.write(root.pendingConfigText)
+    }
+
+    function onConfigWritten(ok, message) {
+        if (!ok) {
+            configFile.suppressEcho = false
+            root.statusText = "Could not save — " + message
+            configFile.reload()
+            return
+        }
+        root.fileText = root.pendingConfigText
+        root.blockOnDisk = !root.pendingRemoval
+        root.statusText = root.pendingRemoval
+            ? "Managed block removed — stock Omarchy motion restored"
+            : "Saved — Hyprland applies live"
+        backupFile.reload()
+    }
+
+    function onConfigRestored(ok, message) {
+        configFile.suppressEcho = false
+        root.statusText = ok
+            ? "Restored looknfeel.lua from OmaMotion's backup"
+            : "Could not restore — " + message
+        if (ok) configFile.reload()
+    }
+
+    function restoreBackup() {
+        saveTimer.stop()
+        root.statusText = "Restoring backup..."
+        configWriter.restore()
     }
 
     function ingestDisk() {
+        var text
         try {
-            root.fileText = configFile.text()
+            text = configFile.text()
         } catch (e) {
             root.statusText = String(e)
             return
         }
-        var res = LuaConfig.readState(root.fileText)
+        var res = LuaConfig.readState(text)
+        // Refuse to parse — or later rewrite — a file that is far larger than
+        // any real looknfeel.lua. Editing stays disabled until it shrinks.
+        if (res.oversize) {
+            root.fileText = ""
+            root.configLocked = true
+            root.lockReason = "~/.config/hypr/looknfeel.lua is over 1 MiB — OmaMotion will not modify it"
+            root.blockOnDisk = false
+            root.state = MotionState.defaultState()
+            root.statusText = root.lockReason
+            refreshEditor()
+            return
+        }
+        root.configLocked = false
+        root.lockReason = ""
+        root.fileText = text
         root.blockOnDisk = res.found
         if (!res.found) {
             root.state = MotionState.defaultState()
@@ -192,12 +266,17 @@ Item {
     function normalizeParsed(parsed) {
         var s = MotionState.defaultState()
         var name
-        for (name in parsed.curves) s.curves[name] = parsed.curves[name]
+        // Curve names read from looknfeel.lua are shown as Button labels and
+        // written back into the Lua block. Keep them to the token charset so
+        // neither path has to deal with markup or quotes.
+        for (name in parsed.curves)
+            if (PresetStore.validToken(name)) s.curves[name] = parsed.curves[name]
         for (var leaf in parsed.animations) {
             var t = parsed.animations[leaf]
             var entry = { enabled: !!t.enabled }
             if (typeof t.speed === "number") entry.speed = t.speed
-            if (typeof t.bezier === "string") entry.bezier = t.bezier
+            if (typeof t.bezier === "string"
+                && (t.bezier === "default" || s.curves[t.bezier])) entry.bezier = t.bezier
             entry.style = typeof t.style === "string" ? t.style : ""
             s.animations[leaf] = entry
         }
@@ -296,6 +375,10 @@ Item {
     Timer { id: resetArm; interval: 3000; onTriggered: root.confirmReset = false }
 
     function resetAll() {
+        if (root.configLocked) {
+            statusText = root.lockReason
+            return
+        }
         if (!confirmReset) {
             confirmReset = true
             resetArm.restart()
@@ -303,15 +386,14 @@ Item {
         }
         confirmReset = false
         saveTimer.stop()          // a pending save must not resurrect the block
-        var cleared = LuaConfig.applyToText(fileText, null)
+        root.pendingConfigText = LuaConfig.applyToText(fileText, null)
+        root.pendingRemoval = true
         configFile.suppressEcho = true
-        configFile.setText(cleared)
-        fileText = cleared
-        blockOnDisk = false
         state = MotionState.defaultState()
         selectCurve("easeOutQuint")
         selectedLeaf = "windowsIn"
-        statusText = "Managed block removed — stock Omarchy motion restored"
+        statusText = "Removing managed block..."
+        configWriter.write(root.pendingConfigText)
     }
 
     // ---- inline row component ----------------------------------------------------
@@ -369,6 +451,7 @@ Item {
                     anchors.right: speedRow.visible ? speedRow.left : parent.right
                     anchors.rightMargin: Style.space(2)
                     anchors.verticalCenter: parent.verticalCenter
+                    textFormat: Text.PlainText
                     text: {
                         var label = leafRow.simple
                             ? MotionState.leafLabel(leafRow.leafName)
@@ -517,6 +600,14 @@ Item {
                         text: root.confirmReset ? "Really reset?" : "Reset all"
                         onClicked: root.resetAll()
                     }
+                    // Recovery hatch: every write leaves the previous file in
+                    // looknfeel.lua.omamotion.bak, so a bad edit is undoable.
+                    Button {
+                        text: "Restore backup"
+                        visible: root.backupAvailable
+                        enabled: !configWriter.busy
+                        onClicked: root.restoreBackup()
+                    }
                 }
 
                 // Vibe cards ---------------------------------------------------
@@ -596,6 +687,7 @@ Item {
 
                                 Text {
                                     text: vibeCard.modelData.name
+                                    textFormat: Text.PlainText
                                     color: vibeCard.active ? Color.accent : Color.foreground
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.body
@@ -604,6 +696,7 @@ Item {
                                 Text {
                                     width: parent.width
                                     text: vibeCard.modelData.desc
+                                    textFormat: Text.PlainText
                                     color: Color.muted
                                     font.family: Style.font.family
                                     font.pixelSize: Style.font.caption
@@ -631,6 +724,7 @@ Item {
                         onClicked: root.saveCustomPreset()
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: root.customPresets.length > 0
                             ? root.customPresets.length + " saved"
                             : "Saved presets appear in the bar"
@@ -759,6 +853,7 @@ Item {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: root.activeCurve + " drives "
                                           + root.curveUsage(root.activeCurve)
                                           + (root.curveUsage(root.activeCurve) === 1 ? " leaf ·" : " leaves ·")
@@ -796,6 +891,9 @@ Item {
                     Text {
                         Layout.preferredWidth: 520
                         text: root.statusText
+                        // Parser and preset errors quote text from the files
+                        // they failed on, so never let Qt sniff this as HTML.
+                        textFormat: Text.PlainText
                         color: Color.muted
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption

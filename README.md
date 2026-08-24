@@ -83,6 +83,21 @@ Only the content between these markers is rewritten:
 Content outside the block is preserved. Reset removes the block. State reading
 uses a literal parser and does not evaluate the user's Lua configuration.
 
+Saves never rewrite `looknfeel.lua` in place. The new file is staged in a
+sibling temporary file, given the live file's permission bits, checked for a
+complete byte count, and only then renamed over the original — so an
+interrupted save cannot truncate the config. The previous contents are kept
+in:
+
+```text
+~/.config/hypr/looknfeel.lua.omamotion.bak
+```
+
+**Restore backup** in the studio puts that copy back. A target that is a
+symlink, or is not a regular file, is refused rather than written through.
+A `looknfeel.lua` larger than 1 MiB is neither parsed nor rewritten; the
+editor reports the file and leaves it alone.
+
 Hyprland watches `looknfeel.lua`, so saved changes apply live. The QML preview
 is separate from the compositor and is intended for visual comparison.
 
@@ -123,6 +138,7 @@ Run the local checks before submitting changes:
 ```bash
 qmllint *.qml
 node tests/preset-store.test.js
+node tests/config-writer.test.js
 omarchy plugin validate .
 ```
 
