@@ -290,8 +290,9 @@ Panel {
                             var w = width
                             var h = height
                             var gap = Style.space(3)
-                            var workspaceWidth = (w - gap) / 2
-                            var workspaceHeight = h - Style.space(4)
+                            var vertical = root.hoveredVibe === "Playful"
+                            var workspaceWidth = vertical ? w : (w - gap) / 2
+                            var workspaceHeight = vertical ? (h - gap) / 2 : h - Style.space(4)
                             var eased = root.hoveredVibe === ""
                                 ? 0.5
                                 : (root.hoveredVibe === "Instant" ? 1 : root.previewEasing().at(root.previewProgress))
@@ -302,20 +303,29 @@ Panel {
                             ctx.fillStyle = Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.04)
                             ctx.fillRect(0, 0, workspaceWidth, workspaceHeight)
                             ctx.strokeRect(0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
-                            ctx.fillRect(workspaceWidth + gap, 0, workspaceWidth, workspaceHeight)
-                            ctx.strokeRect(workspaceWidth + gap + 0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                            if (vertical) {
+                                ctx.fillRect(0, workspaceHeight + gap, workspaceWidth, workspaceHeight)
+                                ctx.strokeRect(0.5, workspaceHeight + gap + 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                            } else {
+                                ctx.fillRect(workspaceWidth + gap, 0, workspaceWidth, workspaceHeight)
+                                ctx.strokeRect(workspaceWidth + gap + 0.5, 0.5, workspaceWidth - 1, workspaceHeight - 1)
+                            }
 
                             ctx.fillStyle = Color.muted
                             ctx.font = Math.max(9, Style.font.caption) + "px sans-serif"
                             ctx.fillText("1", 5, 13)
-                            ctx.fillText("2", workspaceWidth + gap + 5, 13)
+                            if (vertical) ctx.fillText("2", 5, workspaceHeight + gap + 13)
+                            else ctx.fillText("2", workspaceWidth + gap + 5, 13)
 
-                            var windowWidth = workspaceWidth * 0.58
+                            var windowWidth = vertical ? workspaceWidth * 0.52 : workspaceWidth * 0.58
                             var windowHeight = workspaceHeight * 0.5
-                            var fromX = workspaceWidth * 0.18
-                            var toX = workspaceWidth + gap + workspaceWidth * 0.18
-                            var x = fromX + (toX - fromX) * eased
+                            var x = vertical ? (workspaceWidth - windowWidth) / 2 : workspaceWidth * 0.18
                             var y = (workspaceHeight - windowHeight) / 2 + 2
+                            if (vertical) {
+                                y += (workspaceHeight + gap) * eased
+                            } else {
+                                x += (workspaceWidth + gap) * eased
+                            }
                             ctx.fillStyle = Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.24)
                             ctx.strokeStyle = Color.accent
                             ctx.fillRect(x, y, windowWidth, windowHeight)
