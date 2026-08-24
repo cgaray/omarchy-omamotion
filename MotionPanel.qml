@@ -576,6 +576,7 @@ Item {
                                     Qt.callLater(function() { previewStage.trigger("open") })
                                 }
                                 onExited: {
+                                    if (root.hoveredVibe !== vibeCard.modelData.id) return
                                     root.hoveredVibe = ""
                                     Qt.callLater(function() { previewStage.trigger("open") })
                                 }

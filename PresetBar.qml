@@ -350,6 +350,7 @@ Panel {
                                     previewCanvas.requestPaint()
                                 }
                                 onExited: {
+                                    if (root.hoveredVibe !== modelData.id) return
                                     root.hoveredVibe = ""
                                     root.hoveredPreset = null
                                     previewCanvas.requestPaint()
