@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 
 // Installs the launcher entry so OmaMotion is reachable from SUPER+SPACE
 // (apps menu) without wiring a keybind first. Omarchy has no install hook
