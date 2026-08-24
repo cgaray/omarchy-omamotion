@@ -79,11 +79,59 @@ Panel {
         }
     }
 
+    Component {
+        id: motionIcon
+
+        Item {
+            implicitWidth: Style.bar.iconCanvas
+            implicitHeight: Style.bar.iconCanvas
+
+            Canvas {
+                anchors.fill: parent
+
+                onPaint: {
+                    var ctx = getContext("2d")
+                    var w = width
+                    var h = height
+                    var stroke = button.foreground
+                    var accent = Color.accent
+
+                    ctx.clearRect(0, 0, w, h)
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+
+                    // A compact easing curve: two control handles and a
+                    // highlighted point make the widget readable at bar size.
+                    ctx.strokeStyle = Qt.rgba(stroke.r, stroke.g, stroke.b, 0.38)
+                    ctx.lineWidth = Math.max(1, w * 0.07)
+                    ctx.beginPath()
+                    ctx.moveTo(w * 0.14, h * 0.82)
+                    ctx.lineTo(w * 0.34, h * 0.22)
+                    ctx.moveTo(w * 0.86, h * 0.82)
+                    ctx.lineTo(w * 0.66, h * 0.66)
+                    ctx.stroke()
+
+                    ctx.strokeStyle = stroke
+                    ctx.lineWidth = Math.max(1.5, w * 0.11)
+                    ctx.beginPath()
+                    ctx.moveTo(w * 0.14, h * 0.82)
+                    ctx.bezierCurveTo(w * 0.34, h * 0.22, w * 0.66, h * 0.66, w * 0.86, h * 0.82)
+                    ctx.stroke()
+
+                    ctx.fillStyle = accent
+                    ctx.beginPath()
+                    ctx.arc(w * 0.62, h * 0.61, Math.max(1.5, w * 0.12), 0, Math.PI * 2)
+                    ctx.fill()
+                }
+            }
+        }
+    }
+
     BarIconButton {
         id: button
         anchors.fill: parent
         bar: root.bar
-        text: "≈"
+        iconComponent: motionIcon
         active: root.activeVibe !== ""
         tooltipText: root.activeVibe === ""
             ? "Motion presets"
