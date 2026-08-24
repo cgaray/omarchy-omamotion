@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -6,9 +7,9 @@ import qs.Ui
 import "MotionState.js" as MotionState
 import "LuaConfig.js" as LuaConfig
 import "Bezier.js" as BezierLib
+import "PresetStore.js" as PresetStore
 
-// A compact, beginner-friendly preset picker. The full studio remains
-// available from the final row; the common path is one click on a vibe.
+// Preset picker for the bar. The final row opens the full studio.
 Panel {
     id: root
 
@@ -63,12 +64,8 @@ Panel {
     }
 
     function loadCustomPresets() {
-        try {
-            var parsed = JSON.parse(presetFile.text())
-            customPresets = Array.isArray(parsed) ? parsed : []
-        } catch (e) {
-            customPresets = []
-        }
+        var result = PresetStore.parse(presetFile.text())
+        customPresets = result.ok ? result.presets : []
         customPresetRev++
     }
 
@@ -188,12 +185,29 @@ Panel {
 
     FileView {
         id: presetFile
-        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
         watchChanges: true
+        atomicWrites: true
         printErrors: false
         onLoaded: { root.loadCustomPresets(); root.reloadState() }
         onFileChanged: { root.loadCustomPresets(); root.reloadState() }
         onLoadFailed: root.customPresets = []
+    }
+
+    FileView {
+        id: legacyPresetFile
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        watchChanges: false
+        printErrors: false
+        onLoaded: root.migrateLegacyPresets()
+    }
+
+    function migrateLegacyPresets() {
+        if (presetFile.text().trim() !== "" || legacyPresetFile.text().trim() === "") return
+        var result = PresetStore.parse(legacyPresetFile.text())
+        if (!result.ok) return
+        presetFile.setText(JSON.stringify(result.presets, null, 2))
+        customPresets = result.presets
     }
 
     Component {
@@ -217,8 +231,7 @@ Panel {
                     ctx.lineCap = "round"
                     ctx.lineJoin = "round"
 
-                    // A compact easing curve: two control handles and a
-                    // highlighted point make the widget readable at bar size.
+                    // Draw the easing curve and its control handles.
                     ctx.strokeStyle = Qt.rgba(stroke.r, stroke.g, stroke.b, 0.38)
                     ctx.lineWidth = Math.max(1, w * 0.07)
                     ctx.beginPath()
@@ -266,9 +279,7 @@ Panel {
         bar: root.bar
         open: root.opened
         contentWidth: Style.space(380)
-        // KeyboardPanel adds its own surface insets around the content.
-        // Leave a generous bottom reserve so the studio action never lands
-        // underneath the card edge on compact themes or font scales.
+        // Reserve space for KeyboardPanel's surface insets.
         contentHeight: contentColumn.implicitHeight + Style.space(28)
 
         Column {
@@ -296,24 +307,34 @@ Panel {
                 width: parent.width
                 spacing: Style.space(3)
 
-                Column {
+                Flickable {
                     id: presetList
                     width: (parent.width - pickerRow.spacing) * 0.60
-                    spacing: Style.space(2)
+                    height: Math.min(presetColumn.implicitHeight, Style.space(300))
+                    contentWidth: width
+                    contentHeight: presetColumn.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
 
-                    Repeater {
-                        model: { var rev = root.customPresetRev; return root.presetItems() }
+                    Column {
+                        id: presetColumn
+                        width: presetList.width
+                        spacing: Style.space(2)
 
-                        delegate: Rectangle {
-                            required property var modelData
-                            width: presetList.width
+                        Repeater {
+                            model: { var rev = root.customPresetRev; return root.presetItems() }
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: presetColumn.width
                             height: presetText.implicitHeight + Style.space(4)
                             radius: 6
                             color: hover.containsMouse
                                 ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
                                 : "transparent"
                             border.width: root.activeVibe === modelData.name ? 2 : 1
-                            border.color: root.activeVibe === modelData.id
+                            border.color: root.activeVibe === modelData.name
                                 ? Color.accent
                                 : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.22)
 
@@ -359,6 +380,7 @@ Panel {
                                     font.pixelSize: Style.font.caption
                                     wrapMode: Text.WordWrap
                                 }
+                            }
                             }
                         }
                     }

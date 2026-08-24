@@ -38,8 +38,8 @@ function readState(text) {
     }
 }
 
-// Parses hl.curve(...) / hl.animation(...) calls out of a fenced body using
-// balanced scans over Lua literals only — nothing is ever evaluated.
+// Parse hl.curve(...) and hl.animation(...) calls from a fenced body.
+// The scanner handles Lua literals and never evaluates the file.
 function parseBody(body) {
     var curves = {}
     var animations = {}

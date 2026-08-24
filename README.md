@@ -1,22 +1,8 @@
 # OmaMotion
 
-**A motion studio for Hyprland — pick a vibe, feel it live, done.**
-
-An Omarchy shell plugin. Omaland gave Hyprland's geometry a GUI and Aether gave
-color one; OmaMotion completes the trio for **motion**.
-
-Most people need exactly one thing: a *vibe*. The panel opens on five big
-cards — Instant, Snappy, Balanced, Smooth, Playful. Click one, Hyprland
-changes immediately, done. Beneath them a **Simple** tab speaks plain English
-("Window opens", "Panel fades out", speeds as *Fast* / *Balanced* / *Relaxed*,
-styles as *Pop* / *Slide & fade*). The **Advanced** tab holds the full
-studio: every animation leaf Omarchy ships, a hand-draggable bezier editor
-with a live tracer, custom curves, and raw style tokens.
-
-No network access. No sudo. The optional launcher/bar integration is a tiny
-local service; it has no daemon of its own.
-
-<p align="center"><img src="preview.png" alt="The OmaMotion panel: leaf list on the left, bezier curve editor and animated preview on the right" width="880"></p>
+OmaMotion is an Omarchy shell plugin for editing Hyprland animation settings.
+It provides a preset picker, a simple editor, an advanced editor, a curve
+editor, and a live preview.
 
 ## Install
 
@@ -24,131 +10,109 @@ local service; it has no daemon of its own.
 omarchy plugin add https://github.com/cgaray/omamotion.git --enable --yes
 ```
 
-Open it from **SUPER+SPACE › Apps › OmaMotion** (the service half of the
-plugin installs a launcher entry automatically), or bind it:
+Open OmaMotion from the application menu or bind it directly:
 
 ```lua
 o.bind("SUPER + SHIFT + M", "OmaMotion", "omarchy-shell shell toggle io.github.cgaray.omamotion")
 ```
 
-To remove it:
+Remove it with:
 
 ```bash
 omarchy plugin remove io.github.cgaray.omamotion --yes
 ```
 
-## Status bar presets
+The plugin does not change Hyprland configuration during removal. Use **Reset
+all** first to remove OmaMotion's managed animation block.
 
-OmaMotion adds a small `≈` button to the right side of the Omarchy bar. Click
-it to choose Instant, Snappy, Balanced, Smooth, or Playful without opening the
-studio. Right-click the button to open the full studio.
+## Bar Picker
 
-If you installed the repository manually, enable the bar widget with:
+The bar widget provides the Instant, Snappy, Balanced, Smooth, and Playful
+presets. Click a preset to apply it. Right-click the widget to open the studio.
+Saved custom presets are also available in this menu.
+
+For a manual installation, enable the widget with:
 
 ```bash
 omarchy plugin enable io.github.cgaray.omamotion right
 ```
 
-The bar picker is intentionally simple: each choice applies immediately and
-closes the popup. The studio is there when you want to understand or tune the
-details.
+## Editors
 
-**Reset all** (or removing the plugin) takes the managed block with it and
-restores your `looknfeel.lua` byte for byte.
+Simple mode uses labels such as Window opens, Panel fades out, Fast, and Slide.
+Advanced mode exposes every animation leaf, curve selection, raw style tokens,
+and custom curves.
 
-## What it edits
+The preview supports window and layer open, close, move, and layer modes. It
+also shows two workspace panes and uses stacked panes for vertical workspace
+styles. The preview is an approximation of the compositor.
 
-Every animation leaf Omarchy defines in `~/.config/hypr/looknfeel.lua`, plus
-the curves they reference:
+## Custom Presets
 
-| Section | Leaves |
-|---|---|
-| **Global** | master enable, speed multiplier curve |
-| **Windows** | `windows`, `windowsIn`, `windowsOut` — speed, curve, style (`popin 87%`, `slide top`, `fade`, …) |
-| **Layers** | `layers`, `layersIn`, `layersOut`, `fadeLayersIn/Out` |
-| **Fades** | `fadeIn`, `fadeOut`, `fade`, `fadeSwitch` |
-| **Workspaces** | `workspaces` enable/style/speed |
-| **Chrome** | `border` |
+Use **Save current preset** in the studio. A preset contains the current
+animation state and curve library. The bar picker previews and applies saved
+presets.
 
-Colors are absent on purpose: Omarchy themes own them, and touching them here
-would fight `omarchy theme set`.
+Presets are stored as validated JSON in:
 
-## The curve editor
+```text
+~/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json
+```
 
-- Drag **P1/P2** handles; click empty space to snap a handle there
-- A tracer dot sweeps the curve continuously so easing is *felt*, not guessed
-- The five stock Omarchy curves are editable; **Add as new** clones the
-  current shape under a custom name, and any leaf can switch to it from its
-  dropdown
-- Editing a curve updates every leaf that uses it — usage is counted above
-  the editor
+The file is limited to 32 presets and 64 KiB. Presets contain data only; they
+cannot contain commands or executable hooks.
 
-## Preview
+## Configuration
 
-The stage replays the selected leaf with Open / Close / Move / Layer buttons,
-mapping Hyprland style tokens (`popin %`, slide directions, fades) to
-approximate QML transforms. It is deliberately labelled approximate: the real
-compositor is always one save away, and writes apply live because Hyprland
-watches the file.
+OmaMotion owns one fenced block at the end of:
 
-## Vibes (presets)
+```text
+~/.config/hypr/looknfeel.lua
+```
 
-The five cards map to full-animation presets: **Balanced** = Omarchy stock,
-**Smooth** = Butter, **Playful** = Dramatic. Applying a vibe saves instantly
-and keeps your custom curve library intact. The active vibe highlights
-itself; the moment you hand-tune anything, no card is highlighted — honest
-state, no pretending.
-
-## How it works
-
-**Where it writes.** One fenced block at the end of
-`~/.config/hypr/looknfeel.lua` between two marker comments. Nothing outside
-the fences is touched. Clearing every override (Reset all) removes the block
-and restores the file byte for byte. The block is plain Lua in exactly the
-shape Omarchy itself writes — readable, diffable, hand-editable:
+Only the content between these markers is rewritten:
 
 ```lua
 -- >>> omamotion managed block >>>
-hl.curve("easeOutQuint", { type = "bezier", points = { { 0.23, 1 }, { 0.32, 1 } } })
-hl.animation({ leaf = "windowsIn", enabled = true, speed = 4.1, bezier = "easeOutQuint", style = "popin 87%" })
 -- <<< omamotion managed block <<<
 ```
 
-**Reading state back** never evaluates Lua: the block is parsed with balanced
-scans over string/number/table literals only. If a hand-edit breaks the
-syntax, OmaMotion says so instead of guessing, and saving rewrites the block
-cleanly. External changes to the file are watched and merged while you work.
+Content outside the block is preserved. Reset removes the block. State reading
+uses a literal parser and does not evaluate the user's Lua configuration.
 
-**Live preview** of the real thing comes for free: Hyprland reloads
-`looknfeel.lua` on change, so each debounced save applies instantly. The QML
-stage is for feel; the compositor is for truth.
+Hyprland watches `looknfeel.lua`, so saved changes apply live. The QML preview
+is separate from the compositor and is intended for visual comparison.
 
-## Keys
+## Managed Settings
 
-| | |
-|---|---|
-| `Esc` | close |
+| Section | Leaves |
+| --- | --- |
+| Global | `global` |
+| Windows | `windows`, `windowsIn`, `windowsOut` |
+| Layers | `layers`, `layersIn`, `layersOut`, `fadeLayersIn`, `fadeLayersOut` |
+| Fades | `fadeIn`, `fadeOut`, `fade`, `fadeSwitch` |
+| Workspaces | `workspaces` |
+| Chrome | `border` |
 
-Everything else is mouse-first by design; sliders, toggles and dropdowns come
-from Omarchy's own UI kit and follow your theme.
+Theme colors are not edited. Omarchy's theme system owns them.
+
+## Launcher Integration
+
+The service installs a desktop entry at:
+
+```text
+~/.local/share/applications/omamotion.desktop
+```
+
+The entry contains an `X-OmaMotion-Managed=true` marker. The service only
+updates or removes an entry carrying that marker.
 
 ## Requirements
 
-- Omarchy 4 with the Quattro shell (`omarchy-shell`)
-- Hyprland ≥ 0.56 with Lua config support
-- No external dependencies — no `lua` interpreter, no network tools
-
-## Security posture
-
-- Writes only inside its fenced block in `~/.config/hypr/looknfeel.lua`
-- The service kind installs one launcher entry,
-  `~/.local/share/applications/omamotion.desktop`, guarded by an
-  `X-OmaMotion-Managed` marker: pre-existing files are never touched, and
-  removal deletes only what we wrote
-- Never executes plugin-side or user-side code to read state back
-- No network access, no sudo/pkexec, no daemons, no shell-out
-- All state lives in the block itself; remove it and nothing remains
+- Omarchy 4 with `omarchy-shell`
+- Hyprland 0.56 or newer with Lua configuration support
+- No external runtime dependencies
 
 ## License
 
-[MIT](LICENSE)
+MIT. See [LICENSE](LICENSE).

@@ -152,11 +152,11 @@ function round2(v) { return Math.round(v * 100) / 100 }
 
 function clampSpeed(v) { return Math.min(SPEED_MAX, Math.max(SPEED_MIN, v)) }
 
-// --------------------------------------------------------- friendly layer
+// --------------------------------------------------------- preset labels
 
 // One-click vibes. preset refers to a presetNames() entry.
 var VIBES = [
-    { id: "Instant",  name: "Instant",  desc: "No animation — windows just appear." },
+    { id: "Instant",  name: "Instant",  desc: "No animation; windows appear immediately." },
     { id: "Snappy",   name: "Snappy",   desc: "Quick and minimal. For getting things done." },
     { id: "Balanced", name: "Balanced", desc: "The Omarchy default. Gentle and clear." },
     { id: "Smooth",   name: "Smooth",   desc: "Slower and softer, almost cinematic." },
@@ -169,7 +169,7 @@ var VIBE_PRESET = {
 }
 
 // Simple-mode sections: plain names, curated leaves (global and fadeSwitch
-// stay advanced-only — a master multiplier and a niche toggle confuse more
+// stay advanced-only. A master multiplier and niche toggle confuse more
 // than they help).
 var SIMPLE_GROUPS = [
     { name: "Windows",        leaves: ["windows", "windowsIn", "windowsOut"] },

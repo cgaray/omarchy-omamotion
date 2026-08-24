@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.cgaray.omamotion",
   "name": "OmaMotion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Christopher Garay",
   "license": "MIT",
   "description": "Visual motion studio for Hyprland animations: edit every animation leaf, draw bezier curves by hand, and watch a live preview before anything touches your config.",

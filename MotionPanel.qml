@@ -7,8 +7,9 @@ import qs.Commons
 import qs.Ui
 import "MotionState.js" as MotionState
 import "LuaConfig.js" as LuaConfig
+import "PresetStore.js" as PresetStore
 
-// OmaMotion — visual motion studio for Hyprland animations.
+// OmaMotion visual motion studio for Hyprland animations.
 // Edits a single managed block in ~/.config/hypr/looknfeel.lua.
 Item {
     id: root
@@ -47,6 +48,7 @@ Item {
     property bool advancedMode: false
     property string customPresetName: ""
     property var customPresets: []
+    property string pendingPresetText: ""
     property string hoveredVibe: ""
     property int stateRev: 0            // bumped on in-place mutations so
                                         // vibe-highlight bindings re-evaluate
@@ -67,7 +69,7 @@ Item {
         printErrors: false
         // Our own writes echo back as file changes; reloading then would
         // yank the editor mid-gesture. Suppress exactly one bounce per
-        // write — anything else is a genuine external edit worth merging.
+        // write; other changes are external edits and should be reloaded.
         property bool suppressEcho: false
         onFileChanged: {
             if (suppressEcho) { suppressEcho = false; return }
@@ -82,21 +84,47 @@ Item {
 
     FileView {
         id: presetFile
-        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
         watchChanges: true
+        atomicWrites: true
         printErrors: false
-        onLoaded: root.loadCustomPresets()
-        onFileChanged: root.loadCustomPresets()
+        onLoaded: { root.loadCustomPresets(); root.verifyPresetWrite(); root.migrateLegacyPresets() }
+        onFileChanged: { root.loadCustomPresets(); root.verifyPresetWrite() }
         onLoadFailed: root.customPresets = []
     }
 
+    FileView {
+        id: legacyPresetFile
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        watchChanges: false
+        printErrors: false
+        onLoaded: root.migrateLegacyPresets()
+    }
+
     function loadCustomPresets() {
-        try {
-            var parsed = JSON.parse(presetFile.text())
-            root.customPresets = Array.isArray(parsed) ? parsed : []
-        } catch (e) {
-            root.customPresets = []
+        var result = PresetStore.parse(presetFile.text())
+        root.customPresets = result.ok ? result.presets : []
+        if (!result.ok) root.statusText = result.error
+    }
+
+    function migrateLegacyPresets() {
+        if (presetFile.text().trim() !== "" || legacyPresetFile.text().trim() === "") return
+        var result = PresetStore.parse(legacyPresetFile.text())
+        if (!result.ok) return
+        presetFile.setText(JSON.stringify(result.presets, null, 2))
+        root.customPresets = result.presets
+        root.statusText = "Migrated saved presets"
+    }
+
+    function verifyPresetWrite() {
+        if (pendingPresetText === "") return
+        var expected = pendingPresetText
+        pendingPresetText = ""
+        if (presetFile.text().trim() !== expected.trim()) {
+            statusText = "Preset could not be written"
+            return
         }
+        statusText = "Preset saved"
     }
 
     function saveCustomPreset() {
@@ -105,21 +133,16 @@ Item {
             statusText = "Enter a name for this preset"
             return
         }
-        var next = customPresets.slice()
-        var snapshot = JSON.parse(JSON.stringify(root.state))
-        var replaced = false
-        for (var i = 0; i < next.length; i++) {
-            if (next[i].name === name) {
-                next[i] = { name: name, state: snapshot }
-                replaced = true
-                break
-            }
+        var result = PresetStore.upsert(customPresets, name, root.state)
+        if (!result.ok) {
+            statusText = result.error
+            return
         }
-        if (!replaced) next.push({ name: name, state: snapshot })
-        presetFile.setText(JSON.stringify(next, null, 2))
-        customPresets = next
+        pendingPresetText = result.text
+        presetFile.setText(result.text)
+        customPresets = result.presets
         customPresetName = ""
-        statusText = "Preset saved — " + name
+        statusText = "Saving preset..."
     }
 
     function markChanged(label) {
@@ -383,9 +406,8 @@ Item {
                         maximum: MotionState.SPEED_MAX
                         step: 0.01
                         value: root.entryVal(leafRow.leafName, "speed", 1)
-                        // Commit only genuine user input: the value binding
-                        // assignment itself would otherwise fire this handler
-                        // once at startup and phantom-write every row.
+                        // Commit only while dragging. The value binding also
+                        // changes this property during initialization.
                         onValueChanged: {
                             var cur = root.entryVal(leafRow.leafName, "speed", -1)
                             if (dragging && Math.abs(value - cur) > 0.001)

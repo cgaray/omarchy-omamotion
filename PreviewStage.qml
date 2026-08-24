@@ -3,15 +3,11 @@ import qs.Commons
 import qs.Ui
 import "Bezier.js" as BezierLib
 
-// A mock desktop that replays the leaf currently being edited. The
-// mapping from Hyprland semantics to QML transforms is deliberately
-// approximate (labelled as such) — its job is to make speed, curve and
-// style choices felt before they touch the real config.
+// Preview the selected animation leaf with approximate QML transforms.
 Item {
     id: root
 
-    // Injected by MotionPanel: { entry: <leaf state>, curves: <state.curves>,
-    // sweepMs: number } — updated on every relevant change.
+    // MotionPanel supplies the selected entry and curve table.
     property var spec: null
     property string mode: "open"   // open | close | move | layer
 
@@ -29,7 +25,7 @@ Item {
         return Math.max(120, spec.entry.speed * 100)
     }
 
-    // Style heuristics -----------------------------------------------------
+    // Style mapping --------------------------------------------------------
     readonly property bool doFade: !spec || !spec.entry.style
         ? mode !== "move"
         : spec.entry.style.indexOf("fade") !== -1 || spec.modeHint === "fade"
@@ -83,7 +79,7 @@ Item {
         onTriggered: root.trigger(root.mode === "close" ? "open" : root.mode === "open" ? "close" : root.mode)
     }
 
-    // Desktop mock ---------------------------------------------------------
+    // Desktop preview ------------------------------------------------------
     Canvas {
         id: stage
         anchors.fill: parent
@@ -92,7 +88,7 @@ Item {
             var ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
 
-            // Wallpaper-ish backdrop
+            // Preview background
             ctx.fillStyle = Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 1)
             roundedRect(ctx, 0, 0, width, height, 10)
             ctx.fill()

@@ -4,8 +4,7 @@ import "Bezier.js" as BezierLib
 
 // Interactive cubic-bezier editor. Normalized space: x in [0,1],
 // y in [-0.5, 1.5]. P0=(0,0) and P3=(1,1) are fixed; P1/P2 drag.
-// A tracer dot continuously sweeps the curve so the easing is felt,
-// not just seen.
+// A tracer dot sweeps the curve while it is being edited.
 Canvas {
     id: root
 
