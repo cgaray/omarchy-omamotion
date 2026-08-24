@@ -18,7 +18,8 @@ No network access. No sudo. No background service.
 omarchy plugin add https://github.com/cgaray/omamotion.git --enable --yes
 ```
 
-Open it from **SUPER+SPACE › OmaMotion**, or bind it:
+Open it from **SUPER+SPACE › Apps › OmaMotion** (the service half of the
+plugin installs a launcher entry automatically), or bind it:
 
 ```lua
 o.bind("SUPER + SHIFT + M", "OmaMotion", "omarchy-shell shell toggle io.github.cgaray.omamotion")
@@ -115,6 +116,10 @@ from Omarchy's own UI kit and follow your theme.
 ## Security posture
 
 - Writes only inside its fenced block in `~/.config/hypr/looknfeel.lua`
+- The service kind installs one launcher entry,
+  `~/.local/share/applications/omamotion.desktop`, guarded by an
+  `X-OmaMotion-Managed` marker: pre-existing files are never touched, and
+  removal deletes only what we wrote
 - Never executes plugin-side or user-side code to read state back
 - No network access, no sudo/pkexec, no daemons, no shell-out
 - All state lives in the block itself; remove it and nothing remains

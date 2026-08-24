@@ -6,8 +6,9 @@
   "author": "Christopher Garay",
   "license": "MIT",
   "description": "Visual motion studio for Hyprland animations: edit every animation leaf, draw bezier curves by hand, and watch a live preview before anything touches your config.",
-  "kinds": ["panel"],
+  "kinds": ["panel", "service"],
   "entryPoints": {
-    "panel": "MotionPanel.qml"
+    "panel": "MotionPanel.qml",
+    "service": "Service.qml"
   }
 }

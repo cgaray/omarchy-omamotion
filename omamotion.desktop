@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=OmaMotion
+GenericName=Hyprland motion studio
+Comment=Edit Hyprland animations visually: curves, speeds, styles, presets
+Exec=omarchy-shell shell toggle io.github.cgaray.omamotion
+Icon=@ICON@
+Terminal=false
+Categories=System;DesktopSettings;
+Keywords=animation;bezier;easing;curve;hyprland;omarchy;motion;transitions;
+StartupNotify=false
+X-OmaMotion-Managed=true
