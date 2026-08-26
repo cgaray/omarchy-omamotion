@@ -72,8 +72,11 @@ function readState(text) {
 // Parse hl.curve(...) and hl.animation(...) calls from a fenced body.
 // The scanner handles Lua literals and never evaluates the file.
 function parseBody(body) {
-    var curves = {}
-    var animations = {}
+    // Null-prototype: curve names and leaf names are file content, and
+    // "__proto__" as a key on a plain object rewrites its prototype rather
+    // than storing a value.
+    var curves = Object.create(null)
+    var animations = Object.create(null)
     var i = 0
     while (i < body.length) {
         var atCurve = body.indexOf("hl.curve(", i)
@@ -253,6 +256,7 @@ function fmtPoints(p1, p2) {
 // backslash, bracket or control character that could end the literal.
 function isLuaSafe(value) {
     return typeof value === "string" && /^[A-Za-z0-9 _%.-]*$/.test(value)
+        && value !== "__proto__" && value !== "constructor" && value !== "prototype"
 }
 
 function luaTable(entries) {

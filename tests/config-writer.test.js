@@ -1,4 +1,4 @@
-// Exercises the shell helper embedded in ConfigWriter.qml against real files.
+// Exercises the shell helper embedded in SafeFile.qml against real files.
 // The script lives inside a QML string, so it is easy to break silently; these
 // cases pin down the properties the writer exists to guarantee.
 const assert = require("assert")
@@ -21,13 +21,14 @@ function extractHelper(file) {
   return JSON.parse("[" + src.slice(open + 1, end).replace(/,\s*$/, "") + "]").join("\n")
 }
 
-const helper = extractHelper(path.join(__dirname, "..", "ConfigWriter.qml"))
+const helper = extractHelper(path.join(__dirname, "..", "SafeFile.qml"))
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "omamotion-writer-"))
 
-function run(mode, target, want, stdin) {
+function run(mode, target, want, stdin, keepbak) {
   // maxBuffer covers the bounded oversized read; timeout catches a hang on a
   // fifo, which is exactly what the non-blocking open exists to prevent.
-  return spawnSync("sh", ["-c", helper, "omamotion-config", mode, target, String(want)],
+  return spawnSync("sh", ["-c", helper, "omamotion-file", mode, target, String(want),
+                          keepbak === undefined ? "1" : String(keepbak)],
                    { input: stdin === undefined ? "" : stdin,
                      maxBuffer: 8 * 1024 * 1024, timeout: 15000 })
 }
@@ -136,6 +137,27 @@ assert.strictEqual(fs.readFileSync(file("utf8.lua"), "utf8"), utf8)
 
 // No staging files are left behind by any of the above.
 assert.deepStrictEqual(fs.readdirSync(work).filter((n) => n.startsWith(".omamotion.")), [])
+
+// keepbak=0 regenerated files (the launcher entry) leave no stray .bak.
+fs.writeFileSync(file("entry.desktop"), "old\n")
+assert.strictEqual(run("install", file("entry.desktop"), bytes("new\n"), "new\n", 0).status, 0)
+assert.strictEqual(fs.readFileSync(file("entry.desktop"), "utf8"), "new\n")
+assert.strictEqual(fs.existsSync(file("entry.desktop.omamotion.bak")), false)
+
+// The helper resolves its tools from a fixed PATH, so a hostile PATH entry
+// cannot stand in for dd, mktemp or mv.
+const evil = path.join(work, "evilbin")
+fs.mkdirSync(evil)
+for (const tool of ["dd", "mktemp", "mv", "stat", "cat", "rm", "sync"]) {
+  fs.writeFileSync(path.join(evil, tool), "#!/bin/sh\nexit 42\n")
+  fs.chmodSync(path.join(evil, tool), 0o755)
+}
+fs.writeFileSync(file("path.lua"), "before\n")
+const hijack = spawnSync("sh",
+  ["-c", helper, "omamotion-file", "install", file("path.lua"), String(bytes("after\n")), "1"],
+  { input: "after\n", env: { ...process.env, PATH: evil + ":" + process.env.PATH } })
+assert.strictEqual(hijack.status, 0, "helper must ignore a hostile PATH")
+assert.strictEqual(fs.readFileSync(file("path.lua"), "utf8"), "after\n")
 
 fs.rmSync(work, { recursive: true, force: true })
 console.log("config-writer tests passed")

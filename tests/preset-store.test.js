@@ -79,4 +79,30 @@ const styled = JSON.parse(JSON.stringify(state))
 styled.animations.windowsIn.style = "popin 87%"
 assert.ok(lua.generateBody(styled, leafOrder).includes('style = "popin 87%"'))
 
+// --- keys that are not data ------------------------------------------------
+// "__proto__" matches the token charset and, assigned to a plain object,
+// replaces its prototype instead of storing a value. "constructor" and
+// "prototype" resolve to inherited members that read as truthy, which let an
+// unknown leaf past a bare truthiness check.
+
+for (const key of ["__proto__", "constructor", "prototype"]) {
+  assert.strictEqual(store.validToken(key), false, key + " must not be a valid token")
+  assert.strictEqual(store.parse(JSON.stringify([{ name: key, state }])).ok, false,
+                     key + " must not be a valid preset name")
+  assert.strictEqual(store.upsert([], key, state).ok, false,
+                     key + " must not be upsertable")
+
+  const leafKey = JSON.parse(JSON.stringify(state))
+  leafKey.animations = { [key]: { enabled: true } }
+  assert.strictEqual(store.validState(leafKey), false, key + " must not pass as a leaf")
+}
+assert.strictEqual(store.parse(JSON.stringify([{ name: "Real", state }])).ok, true)
+
+// A curve named __proto__ must not become the curves map's prototype.
+const proto = lua.readState(
+  lua.BEGIN + '\nhl.curve("__proto__", { type = "bezier", points = { { 0.1, 0.2 }, { 0.3, 0.4 } } })\n' + lua.END)
+assert.strictEqual(proto.state.curves.p1, undefined, "curves must not inherit from parsed input")
+assert.strictEqual(lua.generateBody({ curves: { __proto__: { p1: [0, 0], p2: [1, 1] } }, animations: {} },
+                                    leafOrder).includes("__proto__"), false)
+
 console.log("preset-store tests passed")

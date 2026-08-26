@@ -41,8 +41,27 @@ function validPoint(point) {
         && point[0] >= 0 && point[0] <= 1 && point[1] >= -0.5 && point[1] <= 1.5
 }
 
+// Keys that reach a plain object as an index. "__proto__" matches the token
+// charset, and assigning it swaps the object's prototype instead of storing
+// a value; "constructor" and "prototype" resolve to inherited members that
+// read as truthy in an existence check.
+// Compared directly rather than looked up in a table: writing "__proto__"
+// as an object-literal key sets that object's prototype instead of adding
+// the key, so the table would silently not contain the one name that
+// matters most.
+function isReservedKey(key) {
+    var k = String(key)
+    return k === "__proto__" || k === "constructor" || k === "prototype"
+}
+
+function has(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key)
+}
+
 function validToken(value) {
-    return typeof value === "string" && /^[A-Za-z0-9_-]+$/.test(value)
+    return typeof value === "string"
+        && /^[A-Za-z0-9_-]+$/.test(value)
+        && !isReservedKey(value)
 }
 
 function validState(state) {
@@ -61,16 +80,19 @@ function validState(state) {
     var leaves = Object.keys(state.animations)
     if (leaves.length === 0 || leaves.length > 64) return false
     for (var j = 0; j < leaves.length; j++) {
-        if (!LEAF_FAMILIES[leaves[j]]) return false
+        // has(), not truthiness: LEAF_FAMILIES["constructor"] is inherited
+        // and truthy, which let an unknown leaf through this check.
+        if (!has(LEAF_FAMILIES, leaves[j])) return false
         var entry = state.animations[leaves[j]]
         if (!entry || typeof entry.enabled !== "boolean") return false
         if (entry.speed !== undefined
             && (!isFiniteNumber(entry.speed) || entry.speed < 0.2 || entry.speed > 12)) return false
         if (entry.bezier !== undefined
             && (typeof entry.bezier !== "string"
-                || (entry.bezier !== "default" && !state.curves[entry.bezier]))) return false
+                || (entry.bezier !== "default" && !has(state.curves, entry.bezier)))) return false
         if (entry.style !== undefined) {
-            var styles = STYLES[LEAF_FAMILIES[leaves[j]]] || [""]
+            var family = LEAF_FAMILIES[leaves[j]]
+            var styles = has(STYLES, family) ? STYLES[family] : [""]
             if (typeof entry.style !== "string" || styles.indexOf(entry.style) === -1) return false
         }
     }
@@ -89,7 +111,7 @@ function parse(text) {
     if (!Array.isArray(parsed)) return { ok: false, presets: [], error: "Preset file must contain an array" }
     if (parsed.length > MAX_PRESETS) return { ok: false, presets: [], error: "Preset file contains too many presets" }
 
-    var names = {}
+    var names = Object.create(null)
     for (var i = 0; i < parsed.length; i++) {
         var preset = parsed[i]
         if (!preset || typeof preset.name !== "string"
@@ -98,6 +120,7 @@ function parse(text) {
             return { ok: false, presets: [], error: "Preset " + (i + 1) + " is invalid" }
         var name = preset.name.trim()
         if (names[name]) return { ok: false, presets: [], error: "Preset names must be unique" }
+        if (isReservedKey(name)) return { ok: false, presets: [], error: "Preset " + (i + 1) + " is invalid" }
         names[name] = true
         preset.name = name
     }
@@ -106,7 +129,7 @@ function parse(text) {
 
 function upsert(presets, name, state) {
     var cleanName = String(name || "").trim()
-    if (cleanName === "" || cleanName.length > MAX_NAME_CHARS)
+    if (cleanName === "" || cleanName.length > MAX_NAME_CHARS || isReservedKey(cleanName))
         return { ok: false, error: "Preset names must be 1-48 characters" }
     if (!validState(state)) return { ok: false, error: "Current motion state is invalid" }
 

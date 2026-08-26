@@ -83,9 +83,10 @@ Only the content between these markers is rewritten:
 Content outside the block is preserved. Reset removes the block. State reading
 uses a literal parser and does not evaluate the user's Lua configuration.
 
-OmaMotion never opens `looknfeel.lua` directly. Both reads and writes go
-through one helper, so nothing touching the live config follows symlinks,
-blocks, or reads unbounded. Reads open with `O_NOFOLLOW|O_NONBLOCK` and stop
+OmaMotion never opens any file directly. Every file it reads or writes — the
+config, its backup, the preset store, and the launcher entry — goes through
+one helper, so nothing follows symlinks, blocks, or reads unbounded, and the
+helper resolves its own tools from a fixed `PATH`. Reads open with `O_NOFOLLOW|O_NONBLOCK` and stop
 just past the 1 MiB limit. Saves are staged in a sibling temporary file,
 given the live file's permission bits, checked for a complete byte count,
 and only then renamed over the original — so an interrupted save cannot

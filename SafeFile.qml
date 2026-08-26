@@ -2,10 +2,13 @@ import QtQuick
 import Quickshell.Io
 import "LuaConfig.js" as LuaConfig
 
-// The only path by which OmaMotion touches ~/.config/hypr/looknfeel.lua.
+// The only path by which OmaMotion touches any file on disk.
 //
-// Both directions go through one shell helper so the live Hyprland config is
-// never opened by anything that follows symlinks, blocks, or reads unbounded:
+// Every file this plugin reads or writes -- the live Hyprland config, its
+// backup, the preset store, the legacy preset store, the launcher entry --
+// goes through one shell helper, so nothing is ever opened by something that
+// follows symlinks, blocks, or reads unbounded. FileView is not pointed at
+// any of them, because it loads before QML can check anything:
 //
 //   read     open with O_NOFOLLOW|O_NONBLOCK and read at most 17x64KiB, one
 //            block past the 1 MiB limit, so an oversized file reads back
@@ -33,6 +36,10 @@ QtObject {
     // Absolute path of the file to manage.
     property string path: ""
 
+    // Whether a write snapshots what it replaces. Off for files that are
+    // regenerated rather than edited, so they leave no stray .bak behind.
+    property bool keepBackup: true
+
     // True while a helper run is in flight.
     property bool busy: false
 
@@ -53,9 +60,16 @@ QtObject {
 
     readonly property string helper: [
         "set -u",
+        "IFS=' \t\n'",
+        "# Resolve every tool from a fixed PATH. This helper is the security",
+        "# boundary; inheriting PATH would let anything earlier on it stand in",
+        "# for dd, mktemp or mv.",
+        "PATH=/usr/bin:/bin:/usr/sbin:/sbin",
+        "export PATH",
         "mode=$1",
         "target=$2",
         "want=$3",
+        "keepbak=${4-1}",
         "dir=${target%/*}",
         "[ \"$dir\" = \"$target\" ] && dir=.",
         "backup=$target.omamotion.bak",
@@ -99,6 +113,9 @@ QtObject {
         "tmp=$(mktemp -- \"$dir/.omamotion.XXXXXX\") || exit 18",
         "bits=",
         "[ -f \"$target\" ] && { bits=$(stat -c %a -- \"$target\" 2>/dev/null) || bits=; }",
+        "# A target swapped to a symlink between the check and here would give",
+        "# stat the link target's mode; only octal digits are ever applied.",
+        "case $bits in ''|*[!0-7]*) bits= ;; esac",
         "if [ -n \"$bits\" ]; then chmod \"$bits\" -- \"$tmp\" 2>/dev/null; else chmod 644 -- \"$tmp\" 2>/dev/null; fi",
         "",
         "if ! cat > \"$tmp\"; then rm -f -- \"$tmp\"; exit 20; fi",
@@ -110,7 +127,7 @@ QtObject {
         "# never destroys the recovery point. mktemp is O_EXCL so the snapshot cannot",
         "# be a planted symlink, and mv replaces a symlink at $backup instead of",
         "# writing through it -- redirecting straight to $backup followed one.",
-        "if [ -f \"$target\" ]; then",
+        "if [ \"$keepbak\" = 1 ] && [ -f \"$target\" ]; then",
         "  btmp=$(mktemp -- \"$dir/.omamotion.XXXXXX\") || { rm -f -- \"$tmp\"; exit 18; }",
         "  if ! readguarded \"$target\" > \"$btmp\"; then rm -f -- \"$tmp\" \"$btmp\"; exit 19; fi",
         "  [ -n \"$bits\" ] && chmod \"$bits\" -- \"$btmp\" 2>/dev/null",
@@ -138,7 +155,8 @@ QtObject {
     }
 
     function command(runMode, bytes) {
-        return ["sh", "-c", helper, "omamotion-config", runMode, path, String(bytes)]
+        return ["sh", "-c", helper, "omamotion-file", runMode, path,
+                String(bytes), keepBackup ? "1" : "0"]
     }
 
     // ---- reading ----------------------------------------------------------

@@ -23,6 +23,7 @@ Item {
         window.visible = true
         configWriter.read()
         configWriter.probe()
+        presetFile.read()
         focusScope.forceActiveFocus()
     }
 
@@ -49,7 +50,6 @@ Item {
     property bool advancedMode: false
     property string customPresetName: ""
     property var customPresets: []
-    property string pendingPresetText: ""
     property string pendingConfigText: ""
     property bool pendingRemoval: false
     property bool configLocked: false      // oversized/unsafe file: never rewrite it
@@ -71,11 +71,11 @@ Item {
     // No FileView is pointed at looknfeel.lua or at its backup: FileView
     // opens and loads before QML can check anything, so a planted symlink,
     // fifo or oversized file would already have been followed or slurped.
-    // Every read and write of both paths goes through ConfigWriter's helper.
+    // Every read and write of both paths goes through SafeFile's helper.
     readonly property string configPath:
         Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
 
-    ConfigWriter {
+    SafeFile {
         id: configWriter
         path: root.configPath
         onLoaded: function (ok, text, message) { root.ingestDisk(ok, text, message) }
@@ -84,49 +84,44 @@ Item {
         onProbed: function (available) { root.backupAvailable = available }
     }
 
-    FileView {
+    // presets.json is user data on a predictable path, so it gets the same
+    // guarded treatment as the config: no FileView, no follow, bounded read.
+    SafeFile {
         id: presetFile
         path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
-        watchChanges: true
-        atomicWrites: true
-        printErrors: false
-        onLoaded: { root.loadCustomPresets(); root.verifyPresetWrite(); root.migrateLegacyPresets() }
-        onFileChanged: { root.loadCustomPresets(); root.verifyPresetWrite() }
-        onLoadFailed: root.customPresets = []
+        onLoaded: function (ok, text, message) { root.loadCustomPresets(ok, text) }
+        onWritten: function (ok, message) { root.onPresetWritten(ok, message) }
     }
 
-    FileView {
+    SafeFile {
         id: legacyPresetFile
         path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
-        watchChanges: false
-        printErrors: false
-        onLoaded: root.migrateLegacyPresets()
+        onLoaded: function (ok, text, message) { root.migrateLegacyPresets(ok, text) }
     }
 
-    function loadCustomPresets() {
-        var result = PresetStore.parse(presetFile.text())
+    function loadCustomPresets(ok, text) {
+        if (!ok) {
+            root.customPresets = []
+            legacyPresetFile.read()      // nothing usable here; try the old path
+            return
+        }
+        var result = PresetStore.parse(text)
         root.customPresets = result.ok ? result.presets : []
         if (!result.ok) root.statusText = result.error
+        if (result.ok && result.presets.length === 0) legacyPresetFile.read()
     }
 
-    function migrateLegacyPresets() {
-        if (presetFile.text().trim() !== "" || legacyPresetFile.text().trim() === "") return
-        var result = PresetStore.parse(legacyPresetFile.text())
-        if (!result.ok) return
-        presetFile.setText(JSON.stringify(result.presets, null, 2))
+    function migrateLegacyPresets(ok, text) {
+        if (!ok || customPresets.length > 0) return
+        var result = PresetStore.parse(text)
+        if (!result.ok || result.presets.length === 0) return
         root.customPresets = result.presets
+        presetFile.write(JSON.stringify(result.presets, null, 2))
         root.statusText = "Migrated saved presets"
     }
 
-    function verifyPresetWrite() {
-        if (pendingPresetText === "") return
-        var expected = pendingPresetText
-        pendingPresetText = ""
-        if (presetFile.text().trim() !== expected.trim()) {
-            statusText = "Preset could not be written"
-            return
-        }
-        statusText = "Preset saved"
+    function onPresetWritten(ok, message) {
+        statusText = ok ? "Preset saved" : "Preset could not be written — " + message
     }
 
     function saveCustomPreset() {
@@ -140,8 +135,7 @@ Item {
             statusText = result.error
             return
         }
-        pendingPresetText = result.text
-        presetFile.setText(result.text)
+        presetFile.write(result.text)
         customPresets = result.presets
         customPresetName = ""
         statusText = "Saving preset..."
@@ -159,7 +153,7 @@ Item {
         onTriggered: root.saveNow()
     }
 
-    // The editor's view of the file only advances once ConfigWriter reports
+    // The editor's view of the file only advances once SafeFile reports
     // the bytes are down, so a refused or failed write leaves fileText
     // matching what is actually on disk.
     function saveNow() {

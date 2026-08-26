@@ -87,8 +87,10 @@ Panel {
         }
     }
 
-    function loadCustomPresets() {
-        var result = PresetStore.parse(presetFile.text())
+    // The bar only reads presets; migration of the legacy path is the
+    // studio's job, so a stale legacy file is not acted on from here.
+    function loadCustomPresets(ok, text) {
+        var result = ok ? PresetStore.parse(text) : { ok: false, presets: [] }
         customPresets = result.ok ? result.presets : []
         customPresetRev++
     }
@@ -121,7 +123,7 @@ Panel {
             ? s.animations.workspaces : s.animations.windowsIn
     }
 
-    // Both apply paths hand the new file to ConfigWriter, which stages it and
+    // Both apply paths hand the new file to SafeFile, which stages it and
     // renames it into place; fileText only advances once that succeeds.
     function commitConfig(nextText, nextVibe) {
         pendingConfigText = nextText
@@ -205,41 +207,26 @@ Panel {
     // No FileView on looknfeel.lua: it would open and load the file before
     // any check could run. The config is read only through the guarded
     // helper, on startup, when the picker opens, and after a failed write.
-    ConfigWriter {
+    SafeFile {
         id: configWriter
         path: Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
         onLoaded: function (ok, text, message) { root.reloadState(ok, text) }
         onWritten: function (ok, message) { root.onConfigWritten(ok) }
     }
 
-    Component.onCompleted: configWriter.read()
-    onOpenedChanged: if (root.opened) configWriter.read()
+    Component.onCompleted: { configWriter.read(); presetFile.read() }
+    onOpenedChanged: {
+        if (!root.opened) return
+        configWriter.read()
+        presetFile.read()
+    }
 
-    FileView {
+    // Same guarded treatment as the config: presets.json sits on a
+    // predictable path and is user data, so no FileView is pointed at it.
+    SafeFile {
         id: presetFile
         path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
-        watchChanges: true
-        atomicWrites: true
-        printErrors: false
-        onLoaded: { root.loadCustomPresets(); configWriter.read() }
-        onFileChanged: { root.loadCustomPresets(); configWriter.read() }
-        onLoadFailed: root.customPresets = []
-    }
-
-    FileView {
-        id: legacyPresetFile
-        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
-        watchChanges: false
-        printErrors: false
-        onLoaded: root.migrateLegacyPresets()
-    }
-
-    function migrateLegacyPresets() {
-        if (presetFile.text().trim() !== "" || legacyPresetFile.text().trim() === "") return
-        var result = PresetStore.parse(legacyPresetFile.text())
-        if (!result.ok) return
-        presetFile.setText(JSON.stringify(result.presets, null, 2))
-        customPresets = result.presets
+        onLoaded: function (ok, text, message) { root.loadCustomPresets(ok, text) }
     }
 
     Component {
