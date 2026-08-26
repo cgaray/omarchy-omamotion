@@ -83,20 +83,29 @@ Only the content between these markers is rewritten:
 Content outside the block is preserved. Reset removes the block. State reading
 uses a literal parser and does not evaluate the user's Lua configuration.
 
-Saves never rewrite `looknfeel.lua` in place. The new file is staged in a
-sibling temporary file, given the live file's permission bits, checked for a
-complete byte count, and only then renamed over the original — so an
-interrupted save cannot truncate the config. The previous contents are kept
-in:
+OmaMotion never opens `looknfeel.lua` directly. Both reads and writes go
+through one helper, so nothing touching the live config follows symlinks,
+blocks, or reads unbounded. Reads open with `O_NOFOLLOW|O_NONBLOCK` and stop
+just past the 1 MiB limit. Saves are staged in a sibling temporary file,
+given the live file's permission bits, checked for a complete byte count,
+and only then renamed over the original — so an interrupted save cannot
+truncate the config. The file being replaced is snapshotted, after the stage
+is verified, to:
 
 ```text
 ~/.config/hypr/looknfeel.lua.omamotion.bak
 ```
 
-**Restore backup** in the studio puts that copy back. A target that is a
-symlink, or is not a regular file, is refused rather than written through.
-A `looknfeel.lua` larger than 1 MiB is neither parsed nor rewritten; the
-editor reports the file and leaves it alone.
+**Restore backup** in the studio puts that copy back. The snapshot is written
+by rename, never by redirection, so a symlink planted at that predictable
+path is replaced rather than followed. A failed save leaves the snapshot
+alone, so an aborted write never destroys the recovery point. A config or
+backup that is a symlink, a fifo, or not a regular file is refused rather
+than followed, and a `looknfeel.lua` larger than 1 MiB is neither parsed nor
+rewritten; the editor reports the file and leaves it alone.
+
+Because nothing watches the file, the studio reads it when it opens and the
+bar picker when its menu opens, rather than live.
 
 Hyprland watches `looknfeel.lua`, so saved changes apply live. The QML preview
 is separate from the compositor and is intended for visual comparison.

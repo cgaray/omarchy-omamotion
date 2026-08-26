@@ -21,7 +21,8 @@ Item {
     function open(payloadJson) {
         closingFromHost = false
         window.visible = true
-        configFile.reload()
+        configWriter.read()
+        configWriter.probe()
         focusScope.forceActiveFocus()
     }
 
@@ -67,42 +68,20 @@ Item {
     }
 
     // ---- persistence --------------------------------------------------------
-    FileView {
-        id: configFile
-        path: Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
-        watchChanges: true
-        printErrors: false
-        // Our own writes echo back as file changes; reloading then would
-        // yank the editor mid-gesture. Suppress exactly one bounce per
-        // write; other changes are external edits and should be reloaded.
-        property bool suppressEcho: false
-        onFileChanged: {
-            if (suppressEcho) { suppressEcho = false; return }
-            reload()
-        }
-        onLoaded: root.ingestDisk()
-        onLoadFailed: {
-            root.statusText = "~/.config/hypr/looknfeel.lua not found"
-            root.state = MotionState.defaultState()
-        }
-    }
+    // No FileView is pointed at looknfeel.lua or at its backup: FileView
+    // opens and loads before QML can check anything, so a planted symlink,
+    // fifo or oversized file would already have been followed or slurped.
+    // Every read and write of both paths goes through ConfigWriter's helper.
+    readonly property string configPath:
+        Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
 
-    // looknfeel.lua is the user's live Hyprland config. It is replaced
-    // wholesale via rename(2) so an interrupted save can never truncate it.
     ConfigWriter {
         id: configWriter
-        path: configFile.path
+        path: root.configPath
+        onLoaded: function (ok, text, message) { root.ingestDisk(ok, text, message) }
         onWritten: function (ok, message) { root.onConfigWritten(ok, message) }
         onRestored: function (ok, message) { root.onConfigRestored(ok, message) }
-    }
-
-    FileView {
-        id: backupFile
-        path: configFile.path + ".omamotion.bak"
-        watchChanges: true
-        printErrors: false
-        onLoaded: root.backupAvailable = text() !== ""
-        onLoadFailed: root.backupAvailable = false
+        onProbed: function (available) { root.backupAvailable = available }
     }
 
     FileView {
@@ -191,16 +170,14 @@ Item {
         var body = LuaConfig.generateBody(root.state, root.leafOrder())
         root.pendingConfigText = LuaConfig.applyToText(root.fileText, body)
         root.pendingRemoval = false
-        configFile.suppressEcho = true
         root.statusText = "Saving..."
         configWriter.write(root.pendingConfigText)
     }
 
     function onConfigWritten(ok, message) {
         if (!ok) {
-            configFile.suppressEcho = false
             root.statusText = "Could not save — " + message
-            configFile.reload()
+            configWriter.read()
             return
         }
         root.fileText = root.pendingConfigText
@@ -208,15 +185,14 @@ Item {
         root.statusText = root.pendingRemoval
             ? "Managed block removed — stock Omarchy motion restored"
             : "Saved — Hyprland applies live"
-        backupFile.reload()
+        root.backupAvailable = true      // the write just snapshotted one
     }
 
     function onConfigRestored(ok, message) {
-        configFile.suppressEcho = false
         root.statusText = ok
             ? "Restored looknfeel.lua from OmaMotion's backup"
             : "Could not restore — " + message
-        if (ok) configFile.reload()
+        if (ok) configWriter.read()
     }
 
     function restoreBackup() {
@@ -225,12 +201,15 @@ Item {
         configWriter.restore()
     }
 
-    function ingestDisk() {
-        var text
-        try {
-            text = configFile.text()
-        } catch (e) {
-            root.statusText = String(e)
+    function ingestDisk(ok, text, message) {
+        if (!ok) {
+            root.configLocked = true
+            root.lockReason = "~/.config/hypr/looknfeel.lua — " + message
+            root.fileText = ""
+            root.blockOnDisk = false
+            root.state = MotionState.defaultState()
+            root.statusText = root.lockReason
+            refreshEditor()
             return
         }
         var res = LuaConfig.readState(text)
@@ -388,7 +367,6 @@ Item {
         saveTimer.stop()          // a pending save must not resurrect the block
         root.pendingConfigText = LuaConfig.applyToText(fileText, null)
         root.pendingRemoval = true
-        configFile.suppressEcho = true
         state = MotionState.defaultState()
         selectCurve("easeOutQuint")
         selectedLeaf = "windowsIn"

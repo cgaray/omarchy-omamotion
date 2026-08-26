@@ -25,8 +25,11 @@ const helper = extractHelper(path.join(__dirname, "..", "ConfigWriter.qml"))
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "omamotion-writer-"))
 
 function run(mode, target, want, stdin) {
+  // maxBuffer covers the bounded oversized read; timeout catches a hang on a
+  // fifo, which is exactly what the non-blocking open exists to prevent.
   return spawnSync("sh", ["-c", helper, "omamotion-config", mode, target, String(want)],
-                   { input: stdin === undefined ? "" : stdin })
+                   { input: stdin === undefined ? "" : stdin,
+                     maxBuffer: 8 * 1024 * 1024, timeout: 15000 })
 }
 const bytes = (s) => Buffer.byteLength(s, "utf8")
 const mode = (p) => (fs.statSync(p).mode & 0o777).toString(8)
@@ -65,10 +68,65 @@ execFileSync("mkfifo", [file("fifo.lua")])
 assert.strictEqual(run("install", file("fifo.lua"), 2, "x\n").status, 12)
 
 // A stage that is shorter than promised — the sender died mid-write — is
-// dropped before the rename, so the live file is untouched.
+// dropped before the rename, so the live file is untouched, and the backup
+// still holds the state before the last SUCCESSFUL write: an aborted save
+// must not destroy the recovery point.
 fs.writeFileSync(file("cfg2.lua"), "keepme\n")
+assert.strictEqual(run("install", file("cfg2.lua"), bytes("v2\n"), "v2\n").status, 0)
 assert.strictEqual(run("install", file("cfg2.lua"), 999, "trunc\n").status, 21)
-assert.strictEqual(fs.readFileSync(file("cfg2.lua"), "utf8"), "keepme\n")
+assert.strictEqual(fs.readFileSync(file("cfg2.lua"), "utf8"), "v2\n")
+assert.strictEqual(fs.readFileSync(file("cfg2.lua.omamotion.bak"), "utf8"), "keepme\n")
+
+// The backup path is predictable, so it is plantable. Writing it by shell
+// redirection followed a symlink there and gave an arbitrary write outside
+// the config directory; it is now staged and renamed like the install.
+fs.writeFileSync(file("live.lua"), "original\n")
+fs.writeFileSync(file("outside"), "PRIVATE\n")
+fs.symlinkSync(file("outside"), file("live.lua.omamotion.bak"))
+assert.strictEqual(run("install", file("live.lua"), bytes("new\n"), "new\n").status, 0)
+assert.strictEqual(fs.readFileSync(file("outside"), "utf8"), "PRIVATE\n")
+assert.strictEqual(fs.lstatSync(file("live.lua.omamotion.bak")).isSymbolicLink(), false)
+assert.strictEqual(fs.readFileSync(file("live.lua.omamotion.bak"), "utf8"), "original\n")
+
+// Restoring from a symlinked backup is refused rather than followed.
+fs.unlinkSync(file("live.lua.omamotion.bak"))
+fs.symlinkSync(file("outside"), file("live.lua.omamotion.bak"))
+assert.strictEqual(run("restore", file("live.lua"), 0).status, 16)
+assert.strictEqual(fs.readFileSync(file("live.lua"), "utf8"), "new\n")
+fs.unlinkSync(file("live.lua.omamotion.bak"))
+
+// --- guarded reads --------------------------------------------------------
+// The config is read through the helper, never through FileView, so the open
+// is O_NOFOLLOW|O_NONBLOCK and the read is bounded before anything is parsed.
+
+assert.strictEqual(run("read", file("live.lua"), 0).stdout.toString(), "new\n")
+assert.strictEqual(run("read", file("absent.lua"), 0).status, 24)
+
+// A symlinked config is refused by the open itself.
+fs.symlinkSync(file("outside"), file("readlink.lua"))
+assert.strictEqual(run("read", file("readlink.lua"), 0).status, 11)
+
+// A fifo returns promptly instead of blocking the shell forever.
+execFileSync("mkfifo", [file("readfifo.lua")])
+const fifoRead = run("read", file("readfifo.lua"), 0)
+assert.notStrictEqual(fifoRead.status, 0)
+assert.strictEqual(fifoRead.signal, null, "fifo read must not have been killed by a timeout")
+
+// An oversized file is read back bounded, and over the 1 MiB limit so the
+// QML side rejects it rather than seeing a silently truncated file.
+fs.writeFileSync(file("big.lua"), "x".repeat(3_000_000))
+const big = run("read", file("big.lua"), 0)
+assert.strictEqual(big.status, 0)
+assert.ok(big.stdout.length > 1048576, "oversized read must exceed the limit")
+assert.ok(big.stdout.length <= 1114112, "oversized read must stay bounded")
+
+// probe reports a usable backup, and refuses a planted symlink at that path.
+assert.strictEqual(run("probe", file("cfg2.lua"), 0).status, 0)
+assert.strictEqual(run("probe", file("absent.lua"), 0).status, 14)
+fs.symlinkSync(file("outside"), file("probe.lua.omamotion.bak"))
+fs.writeFileSync(file("probe.lua"), "x\n")
+assert.strictEqual(run("probe", file("probe.lua"), 0).status, 25)
+fs.unlinkSync(file("probe.lua.omamotion.bak"))
 
 // Multibyte content round-trips: the byte count QML computes is the count the
 // helper checks against.

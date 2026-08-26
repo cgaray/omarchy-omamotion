@@ -19,7 +19,6 @@ Panel {
 
     property string fileText: ""
     property string activeVibe: ""
-    property bool suppressEcho: false
     property string hoveredVibe: ""
     property var hoveredPreset: null
     property real previewProgress: 0
@@ -52,8 +51,15 @@ Panel {
         return s
     }
 
-    function reloadState() {
-        var text = configFile.text()
+    function reloadState(ok, text) {
+        // Anything the guarded reader refused — symlink, fifo, unreadable —
+        // leaves presets disabled rather than acted on.
+        if (!ok) {
+            fileText = ""
+            configLocked = true
+            activeVibe = ""
+            return
+        }
         var result = LuaConfig.readState(text)
         // A file this large is not a looknfeel.lua we should be parsing, let
         // alone rewriting. Applying presets stays disabled until it shrinks.
@@ -120,15 +126,13 @@ Panel {
     function commitConfig(nextText, nextVibe) {
         pendingConfigText = nextText
         pendingVibe = nextVibe
-        suppressEcho = true
         configWriter.write(nextText)
         root.close()
     }
 
     function onConfigWritten(ok) {
         if (!ok) {
-            suppressEcho = false
-            configFile.reload()
+            configWriter.read()
             return
         }
         fileText = pendingConfigText
@@ -198,26 +202,18 @@ Panel {
         }
     }
 
+    // No FileView on looknfeel.lua: it would open and load the file before
+    // any check could run. The config is read only through the guarded
+    // helper, on startup, when the picker opens, and after a failed write.
     ConfigWriter {
         id: configWriter
-        path: configFile.path
+        path: Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
+        onLoaded: function (ok, text, message) { root.reloadState(ok, text) }
         onWritten: function (ok, message) { root.onConfigWritten(ok) }
     }
 
-    FileView {
-        id: configFile
-        path: Quickshell.env("HOME") + "/.config/hypr/looknfeel.lua"
-        watchChanges: true
-        printErrors: false
-        onLoaded: root.reloadState()
-        onFileChanged: {
-            if (root.suppressEcho) {
-                root.suppressEcho = false
-                return
-            }
-            reload()
-        }
-    }
+    Component.onCompleted: configWriter.read()
+    onOpenedChanged: if (root.opened) configWriter.read()
 
     FileView {
         id: presetFile
@@ -225,8 +221,8 @@ Panel {
         watchChanges: true
         atomicWrites: true
         printErrors: false
-        onLoaded: { root.loadCustomPresets(); root.reloadState() }
-        onFileChanged: { root.loadCustomPresets(); root.reloadState() }
+        onLoaded: { root.loadCustomPresets(); configWriter.read() }
+        onFileChanged: { root.loadCustomPresets(); configWriter.read() }
         onLoadFailed: root.customPresets = []
     }
 
