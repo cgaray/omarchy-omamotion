@@ -24,7 +24,7 @@ var MAX_CONFIG_BYTES = 1048576
 
 // ------------------------------------------------------------ sizing
 
-// QML strings are UTF-16, so length() is not a byte count. ConfigWriter
+// QML strings are UTF-16, so length() is not a byte count. SafeFile
 // hands the same number to its helper, which compares it against the
 // staged file before renaming it over the live config.
 function utf8Length(text) {
