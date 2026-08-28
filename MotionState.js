@@ -122,6 +122,17 @@ function applyPreset(state, name) {
         s.animations = scaled(base.animations, 0.5)
         s.animations.windowsIn.style = "popin 94%"
         s.animations.fade.bezier = "quick"
+        // scaled() only touches .speed, so workspaces — disabled in the
+        // stock base state — stays disabled here too unless explicitly
+        // turned on, same as Butter/Dramatic already do below. Without
+        // this, "Snappy" (quick and minimal, not "no transition at all")
+        // and "Omarchy stock" end up visually identical for workspace
+        // switches: both show no animation, which reads as a broken
+        // preset rather than a fast one.
+        s.animations.workspaces.enabled = true
+        s.animations.workspaces.style = "slide"
+        s.animations.workspaces.speed = 2
+        s.animations.workspaces.bezier = "easeOutQuint"
     } else if (name === "Dramatic") {
         s.animations = scaled(base.animations, 1.35)
         s.animations.windows.bezier = "easeInOutCubic"

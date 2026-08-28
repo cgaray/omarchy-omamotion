@@ -44,6 +44,16 @@ assert.strictEqual(store.plainName("<b>bold</b>"), " b bold /b ")
 assert.strictEqual(store.plainName("Snappy"), "Snappy")
 assert.strictEqual(store.plainName(undefined), "")
 
+// --- builtin vibe presets -------------------------------------------------
+
+// scaled() only rewrites .speed, so any preset relying purely on scaled()
+// silently inherits workspaces.enabled = false from the stock base state.
+// Snappy should still transition on workspace switch, just quickly —
+// "quick and minimal" isn't "no transition at all", and Butter/Dramatic
+// both explicitly enable it for the same reason.
+const snappy = motion.applyPreset(motion.defaultState(), "Snappy")
+assert.strictEqual(snappy.animations.workspaces.enabled, true)
+
 // --- config size bound ----------------------------------------------------
 
 assert.strictEqual(lua.utf8Length("abc"), 3)
