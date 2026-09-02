@@ -59,8 +59,12 @@ presets.
 Presets are stored as validated JSON in:
 
 ```text
-~/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json
+~/.config/omamotion/presets.json
 ```
+
+Deliberately outside the plugin directory: Omarchy hot-reloads a plugin —
+closing its open panel — on any file change under its own directory, which
+would otherwise fire on every save.
 
 The file is limited to 32 presets and 64 KiB. Presets contain data only; they
 cannot contain commands or executable hooks.

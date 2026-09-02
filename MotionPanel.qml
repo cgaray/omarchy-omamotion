@@ -86,16 +86,30 @@ Item {
 
     // presets.json is user data on a predictable path, so it gets the same
     // guarded treatment as the config: no FileView, no follow, bounded read.
+    //
+    // This path is intentionally NOT under the plugin directory. Omarchy's
+    // shell watches ~/.config/omarchy/plugins/ recursively (inotifywait -m -r
+    // -e close_write,create,delete,move) and hot-reloads a plugin — tearing
+    // down its currently-open panel — on any matching event anywhere under
+    // its own directory. Every install() run (mktemp, write, backup, rename)
+    // fires several of those events, so a presets.json living inside the
+    // plugin tree made every "Save current preset" click reload the studio
+    // out from under itself mid-save. desktopFile in Service.qml already
+    // avoids this by writing to ~/.local/share/applications/; do the same
+    // here.
     SafeFile {
         id: presetFile
-        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
         onLoaded: function (ok, text, message) { root.loadCustomPresets(ok, text) }
         onWritten: function (ok, message) { root.onPresetWritten(ok, message) }
     }
 
+    // One-time migration source: where presets.json used to live before it
+    // was moved inside the plugin directory (see the comment above). Only
+    // read from, never written to, so it can't reintroduce the same bug.
     SafeFile {
         id: legacyPresetFile
-        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
         onLoaded: function (ok, text, message) { root.migrateLegacyPresets(ok, text) }
     }
 
@@ -247,9 +261,27 @@ Item {
         for (var leaf in parsed.animations) {
             var t = parsed.animations[leaf]
             var entry = { enabled: !!t.enabled }
-            if (typeof t.speed === "number") entry.speed = t.speed
+            if (typeof t.speed === "number") {
+                entry.speed = t.speed
+            } else if (s.animations[leaf] && s.animations[leaf].speed !== undefined) {
+                // Heals a file saved before this leaf's default carried a
+                // speed (e.g. "workspaces" — see MotionState.js). Hyprland
+                // requires speed unconditionally for some leaves even while
+                // disabled, and a file missing it fails to reload at all,
+                // silently freezing every other pending change too — so a
+                // once-corrupted file would otherwise re-corrupt itself
+                // forever, since this same function is what feeds the next
+                // save right back out.
+                entry.speed = s.animations[leaf].speed
+            }
             if (typeof t.bezier === "string"
-                && (t.bezier === "default" || s.curves[t.bezier])) entry.bezier = t.bezier
+                && (t.bezier === "default" || s.curves[t.bezier])) {
+                entry.bezier = t.bezier
+            } else if (s.animations[leaf] && s.animations[leaf].bezier !== undefined) {
+                // Same healing as speed above — Hyprland separately requires
+                // "bezier or spring" once speed is satisfied.
+                entry.bezier = s.animations[leaf].bezier
+            }
             entry.style = typeof t.style === "string" ? t.style : ""
             s.animations[leaf] = entry
         }
@@ -319,12 +351,26 @@ Item {
     function setStyle(leaf, s)   { state.animations[leaf].style = s; markChanged(leaf) }
 
     function entryVal(leaf, key, dflt) {
+        // setSpeed/setEnabled/setBezier/setStyle mutate `state` in place, so
+        // QML's binding tracker — which only sees direct property reads —
+        // never notices: reassigning a *field inside* `state` doesn't fire
+        // `state`'s own change notification, only reassigning `state` itself
+        // would. `stateRev` exists precisely to be that notification (bumped
+        // by markChanged on every mutation); read it here, unused, so every
+        // binding that calls entryVal() picks it up as a dependency and
+        // actually re-evaluates. Without this read, every slider, toggle,
+        // and dropdown bound through entryVal() silently never updates.
+        stateRev
         var e = state.animations[leaf]
         if (!e || e[key] === undefined) return dflt
         return e[key]
     }
 
     function previewDurationHint() {
+        // Same stateRev dependency as entryVal() above — this is also read
+        // from a property binding (sweepMs:), and speed changes wouldn't
+        // otherwise reach the live preview.
+        stateRev
         var e = state.animations[selectedLeaf]
         if (!e || e.speed === undefined) return 300
         return Math.max(120, e.speed * 100)
@@ -414,7 +460,13 @@ Item {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     checked: !!root.entryVal(leafRow.leafName, "enabled", false)
-                    onToggled: root.setEnabled(leafRow.leafName, checked)
+                    // ToggleSwitch never mutates its own `checked` — same
+                    // one-way-bound contract as PanelSlider's `value` above.
+                    // Its own docs are explicit: "flip it in response to
+                    // toggled()". Reading `checked` here read the pre-click,
+                    // still-bound value, so every toggle was a same-value
+                    // no-op.
+                    onToggled: root.setEnabled(leafRow.leafName, !checked)
                 }
 
                 Text {
@@ -461,13 +513,14 @@ Item {
                         maximum: MotionState.SPEED_MAX
                         step: 0.01
                         value: root.entryVal(leafRow.leafName, "speed", 1)
-                        // Commit only while dragging. The value binding also
-                        // changes this property during initialization.
-                        onValueChanged: {
-                            var cur = root.entryVal(leafRow.leafName, "speed", -1)
-                            if (dragging && Math.abs(value - cur) > 0.001)
-                                root.setSpeed(leafRow.leafName, value)
-                        }
+                        // PanelSlider never mutates its own `value` — it's a
+                        // one-way display property; drag/wheel input is
+                        // reported via moved()/released() instead. Commit on
+                        // moved() for live feedback while dragging. (This
+                        // used to listen for onValueChanged, which only ever
+                        // fired from the `value:` binding above — dragging
+                        // silently changed nothing.)
+                        onMoved: function(v) { root.setSpeed(leafRow.leafName, v) }
                     }
                 }
             }
