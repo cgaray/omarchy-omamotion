@@ -68,6 +68,15 @@ assert.strictEqual(fs.readFileSync(file("secret"), "utf8"), "target\n")
 execFileSync("mkfifo", [file("fifo.lua")])
 assert.strictEqual(run("install", file("fifo.lua"), 2, "x\n").status, 12)
 
+// A managed file whose parent directory does not exist yet gets one created
+// for it (e.g. presets.json living outside the plugin tree, with nothing
+// else responsible for creating its directory on a fresh install).
+const freshDir = path.join(work, "fresh-subdir")
+assert.strictEqual(fs.existsSync(freshDir), false)
+assert.strictEqual(
+  run("install", path.join(freshDir, "presets.json"), bytes("[]\n"), "[]\n").status, 0)
+assert.strictEqual(fs.readFileSync(path.join(freshDir, "presets.json"), "utf8"), "[]\n")
+
 // A stage that is shorter than promised — the sender died mid-write — is
 // dropped before the rename, so the live file is untouched, and the backup
 // still holds the state before the last SUCCESSFUL write: an aborted save

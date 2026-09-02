@@ -86,16 +86,30 @@ Item {
 
     // presets.json is user data on a predictable path, so it gets the same
     // guarded treatment as the config: no FileView, no follow, bounded read.
+    //
+    // This path is intentionally NOT under the plugin directory. Omarchy's
+    // shell watches ~/.config/omarchy/plugins/ recursively (inotifywait -m -r
+    // -e close_write,create,delete,move) and hot-reloads a plugin — tearing
+    // down its currently-open panel — on any matching event anywhere under
+    // its own directory. Every install() run (mktemp, write, backup, rename)
+    // fires several of those events, so a presets.json living inside the
+    // plugin tree made every "Save current preset" click reload the studio
+    // out from under itself mid-save. desktopFile in Service.qml already
+    // avoids this by writing to ~/.local/share/applications/; do the same
+    // here.
     SafeFile {
         id: presetFile
-        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
         onLoaded: function (ok, text, message) { root.loadCustomPresets(ok, text) }
         onWritten: function (ok, message) { root.onPresetWritten(ok, message) }
     }
 
+    // One-time migration source: where presets.json used to live before it
+    // was moved inside the plugin directory (see the comment above). Only
+    // read from, never written to, so it can't reintroduce the same bug.
     SafeFile {
         id: legacyPresetFile
-        path: Quickshell.env("HOME") + "/.config/omamotion/presets.json"
+        path: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.cgaray.omamotion/presets.json"
         onLoaded: function (ok, text, message) { root.migrateLegacyPresets(ok, text) }
     }
 
