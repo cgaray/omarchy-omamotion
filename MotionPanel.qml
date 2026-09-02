@@ -333,12 +333,26 @@ Item {
     function setStyle(leaf, s)   { state.animations[leaf].style = s; markChanged(leaf) }
 
     function entryVal(leaf, key, dflt) {
+        // setSpeed/setEnabled/setBezier/setStyle mutate `state` in place, so
+        // QML's binding tracker — which only sees direct property reads —
+        // never notices: reassigning a *field inside* `state` doesn't fire
+        // `state`'s own change notification, only reassigning `state` itself
+        // would. `stateRev` exists precisely to be that notification (bumped
+        // by markChanged on every mutation); read it here, unused, so every
+        // binding that calls entryVal() picks it up as a dependency and
+        // actually re-evaluates. Without this read, every slider, toggle,
+        // and dropdown bound through entryVal() silently never updates.
+        stateRev
         var e = state.animations[leaf]
         if (!e || e[key] === undefined) return dflt
         return e[key]
     }
 
     function previewDurationHint() {
+        // Same stateRev dependency as entryVal() above — this is also read
+        // from a property binding (sweepMs:), and speed changes wouldn't
+        // otherwise reach the live preview.
+        stateRev
         var e = state.animations[selectedLeaf]
         if (!e || e.speed === undefined) return 300
         return Math.max(120, e.speed * 100)
@@ -428,7 +442,13 @@ Item {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     checked: !!root.entryVal(leafRow.leafName, "enabled", false)
-                    onToggled: root.setEnabled(leafRow.leafName, checked)
+                    // ToggleSwitch never mutates its own `checked` — same
+                    // one-way-bound contract as PanelSlider's `value` above.
+                    // Its own docs are explicit: "flip it in response to
+                    // toggled()". Reading `checked` here read the pre-click,
+                    // still-bound value, so every toggle was a same-value
+                    // no-op.
+                    onToggled: root.setEnabled(leafRow.leafName, !checked)
                 }
 
                 Text {
@@ -475,13 +495,14 @@ Item {
                         maximum: MotionState.SPEED_MAX
                         step: 0.01
                         value: root.entryVal(leafRow.leafName, "speed", 1)
-                        // Commit only while dragging. The value binding also
-                        // changes this property during initialization.
-                        onValueChanged: {
-                            var cur = root.entryVal(leafRow.leafName, "speed", -1)
-                            if (dragging && Math.abs(value - cur) > 0.001)
-                                root.setSpeed(leafRow.leafName, value)
-                        }
+                        // PanelSlider never mutates its own `value` — it's a
+                        // one-way display property; drag/wheel input is
+                        // reported via moved()/released() instead. Commit on
+                        // moved() for live feedback while dragging. (This
+                        // used to listen for onValueChanged, which only ever
+                        // fired from the `value:` binding above — dragging
+                        // silently changed nothing.)
+                        onMoved: function(v) { root.setSpeed(leafRow.leafName, v) }
                     }
                 }
             }
