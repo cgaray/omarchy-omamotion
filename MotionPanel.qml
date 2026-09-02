@@ -261,9 +261,27 @@ Item {
         for (var leaf in parsed.animations) {
             var t = parsed.animations[leaf]
             var entry = { enabled: !!t.enabled }
-            if (typeof t.speed === "number") entry.speed = t.speed
+            if (typeof t.speed === "number") {
+                entry.speed = t.speed
+            } else if (s.animations[leaf] && s.animations[leaf].speed !== undefined) {
+                // Heals a file saved before this leaf's default carried a
+                // speed (e.g. "workspaces" — see MotionState.js). Hyprland
+                // requires speed unconditionally for some leaves even while
+                // disabled, and a file missing it fails to reload at all,
+                // silently freezing every other pending change too — so a
+                // once-corrupted file would otherwise re-corrupt itself
+                // forever, since this same function is what feeds the next
+                // save right back out.
+                entry.speed = s.animations[leaf].speed
+            }
             if (typeof t.bezier === "string"
-                && (t.bezier === "default" || s.curves[t.bezier])) entry.bezier = t.bezier
+                && (t.bezier === "default" || s.curves[t.bezier])) {
+                entry.bezier = t.bezier
+            } else if (s.animations[leaf] && s.animations[leaf].bezier !== undefined) {
+                // Same healing as speed above — Hyprland separately requires
+                // "bezier or spring" once speed is satisfied.
+                entry.bezier = s.animations[leaf].bezier
+            }
             entry.style = typeof t.style === "string" ? t.style : ""
             s.animations[leaf] = entry
         }

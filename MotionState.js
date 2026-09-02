@@ -38,7 +38,15 @@ var LEAVES = [
     { leaf: "layersOut",     family: "layers",      group: "Layers",      enabled: true,  speed: 1.5,  bezier: "linear",       style: "fade" },
     { leaf: "fadeLayersIn",  family: "fade",        group: "Layers",      enabled: true,  speed: 1.79, bezier: "almostLinear" },
     { leaf: "fadeLayersOut", family: "fade",        group: "Layers",      enabled: true,  speed: 1.39, bezier: "almostLinear" },
-    { leaf: "workspaces",    family: "workspaces",  group: "Workspaces",  enabled: false }
+    // speed and bezier are both required here even though Omarchy's own
+    // stock looknfeel.lua omits both (line 88, "workspaces", currently
+    // enabled = false) — on this Hyprland version hl.animation("workspaces")
+    // rejects the whole config on reload without them, one error at a time
+    // ("missing required field speed", then once that's fixed, "bezier or
+    // spring is required"), unlike fadeSwitch just above, which genuinely
+    // needs neither (confirmed: it has produced zero reload errors across
+    // many saves). Values match this plugin's own seeded "Default" preset.
+    { leaf: "workspaces",    family: "workspaces",  group: "Workspaces",  enabled: false, speed: 2, bezier: "easeOutQuint" }
 ]
 
 var GROUP_ORDER = ["Global", "Windows", "Layers", "Fades", "Workspaces", "Chrome"]
